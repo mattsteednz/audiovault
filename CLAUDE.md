@@ -11,11 +11,7 @@ AudioVault is a Flutter audiobook player app for Android and iOS.
 
 ## Flutter Setup
 
-Flutter is installed at `C:\Users\Matt\dev\flutter` and is **not on Git Bash PATH**. To run Flutter commands use PowerShell or cmd, or prefix with the full path:
-
-```bash
-/c/Users/Matt/dev/flutter/bin/flutter <command>
-```
+Flutter is installed at `C:\Users\Matt\dev\flutter` and is available on PATH.
 
 ## Architecture
 

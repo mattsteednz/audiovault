@@ -2,6 +2,8 @@ import 'dart:io';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:permission_handler/permission_handler.dart';
+import '../main.dart';
+import '../services/enrichment_service.dart';
 import '../services/preferences_service.dart';
 import '../services/telemetry_service.dart';
 
@@ -16,8 +18,10 @@ class SettingsScreen extends StatefulWidget {
 class _SettingsScreenState extends State<SettingsScreen> {
   String? _folderPath;
   bool _telemetryEnabled = false;
+  bool _metadataEnrichment = true;
   bool _folderChanged = false;
   bool _pickingFolder = false;
+  String _themeMode = 'system';
 
   @override
   void initState() {
@@ -29,9 +33,13 @@ class _SettingsScreenState extends State<SettingsScreen> {
     final prefs = PreferencesService();
     final path = await prefs.getLibraryPath();
     final consent = await prefs.getAnalyticsConsent();
+    final themeMode = await prefs.getThemeMode();
+    final enrichment = await prefs.getMetadataEnrichment();
     setState(() {
       _folderPath = path;
       _telemetryEnabled = consent ?? false;
+      _themeMode = themeMode ?? 'system';
+      _metadataEnrichment = enrichment;
     });
   }
 
@@ -63,6 +71,29 @@ class _SettingsScreenState extends State<SettingsScreen> {
     }
   }
 
+  Future<void> _setThemeMode(String value) async {
+    await PreferencesService().setThemeMode(value);
+    ThemeMode themeMode;
+    switch (value) {
+      case 'light':
+        themeMode = ThemeMode.light;
+        break;
+      case 'dark':
+        themeMode = ThemeMode.dark;
+        break;
+      default:
+        themeMode = ThemeMode.system;
+    }
+    themeModeNotifier.value = themeMode;
+    setState(() => _themeMode = value);
+  }
+
+  Future<void> _setMetadataEnrichment(bool value) async {
+    await PreferencesService().setMetadataEnrichment(value);
+    if (!value) EnrichmentService().cancel();
+    setState(() => _metadataEnrichment = value);
+  }
+
   Future<void> _setTelemetry(bool value) async {
     await PreferencesService().setAnalyticsConsent(value);
     await TelemetryService.applyConsent(value);
@@ -86,8 +117,46 @@ class _SettingsScreenState extends State<SettingsScreen> {
         body: ListView(
           padding: const EdgeInsets.symmetric(vertical: 8),
           children: [
+            // ── Appearance section ───────────────────────────────────────
+            _sectionHeader('Appearance', theme),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+              child: SegmentedButton<String>(
+                segments: const [
+                  ButtonSegment(
+                    value: 'system',
+                    label: Text('Follow system'),
+                    icon: Icon(Icons.brightness_auto_rounded),
+                  ),
+                  ButtonSegment(
+                    value: 'light',
+                    label: Text('Light'),
+                    icon: Icon(Icons.light_mode_rounded),
+                  ),
+                  ButtonSegment(
+                    value: 'dark',
+                    label: Text('Dark'),
+                    icon: Icon(Icons.dark_mode_rounded),
+                  ),
+                ],
+                selected: {_themeMode},
+                onSelectionChanged: (selection) =>
+                    _setThemeMode(selection.first),
+              ),
+            ),
+            const Divider(height: 24),
+
             // ── Audiobooks section ───────────────────────────────────────
             _sectionHeader('Audiobooks', theme),
+            SwitchListTile(
+              value: _metadataEnrichment,
+              onChanged: _setMetadataEnrichment,
+              title: const Text('Get missing covers & metadata'),
+              subtitle: const Text(
+                  'Fetches covers from Open Library for books without artwork'),
+              contentPadding:
+                  const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+            ),
             ListTile(
               contentPadding:
                   const EdgeInsets.symmetric(horizontal: 16, vertical: 4),

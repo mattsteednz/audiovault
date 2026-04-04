@@ -1,121 +1,107 @@
-# PRD 0: Metadata Enrichment & Match Resolution
+# PRD 0: Metadata Enrichment from Open Library
 
 ## Feature Overview
-Automatically enrich audiobook metadata (cover art, author bio, description, publisher, publication date) from open metadata sources using ISBN, title, and author. Implement intelligent fuzzy matching and user-friendly UI for resolving ambiguous matches when multiple editions are found.
+Automatically enrich audiobook metadata (cover art and author) for books missing this information by querying Open Library. When books are scanned into the library, create a background queue to fetch missing covers and author info. Users can toggle this feature on/off in Settings.
 
 ## User Stories
 
-**US-0.1:** As a user, I want the app to automatically fetch a cover image, description, and author info for a book I import so I don't have to manually enter metadata.
+**US-0.1:** As a user, I want the app to automatically fetch cover art for books without one so my library looks complete.
 
-**US-0.2:** As a user, I want to see multiple matching editions when I import a book so I can select the correct one (e.g., "2019 Audiobook Edition" vs. "2015 eBook Edition").
+**US-0.2:** As a user, I want the app to fetch author information for books missing it.
 
-**US-0.3:** As a user, I want the app to show confidence scores or edition details (narrator, publisher, release date) to help me pick the right match.
-
-**US-0.4:** As a user, I want to manually override or edit metadata if the auto-match is incorrect so my library stays accurate.
+**US-0.3:** As a user, I want to toggle whether the app fetches missing metadata so I can control background activity.
 
 ## Acceptance Criteria
 
-- [ ] Metadata is fetched automatically on book import if ISBN, title, or ASIN is available
-- [ ] Cover art is downloaded and cached (max 10MB per image; resize to 3 sizes: small, medium, large)
-- [ ] App returns top 5 matches when multiple editions are found; display title, author, narrator, publisher, year, edition type
-- [ ] Matches are ranked by confidence score (ISBN exact match > title+author fuzzy match > title-only match)
-- [ ] User selection UI shows covers side-by-side with key differentiators (edition, narrator, publish date)
-- [ ] Selected metadata is persisted; user can edit any field post-selection
-- [ ] Fallback gracefully if no match found: allow manual entry of title/author/cover
-- [ ] API failures (timeouts, rate limits) don't block book import; mark as "pending enrichment"
-- [ ] Bulk import: batch queries to APIs to avoid rate limits; process <50ms per book average
+- [ ] When books are scanned into the library, identify books missing cover art or author info
+- [ ] On rescan, only queue books that are new or have not yet been enriched
+- [ ] Skip re-enriching books that already have metadata from previous scans
+- [ ] Create a queue of books needing enrichment
+- [ ] Query Open Library API to fetch cover and author for each book in queue
+- [ ] Match by ISBN first; fallback to title + author search
+- [ ] Download and cache cover images locally
+- [ ] Store fetched author info in book database
+- [ ] Track enrichment status per book (enriched: true/false, last_enriched_date)
+- [ ] Settings includes toggle: "Get missing covers/metadata" (enabled by default)
+- [ ] If toggle is off, no Open Library requests are made
+- [ ] Toggling setting on/off immediately starts or stops the enrichment queue
+- [ ] Failed API requests don't block app or book import
+- [ ] Gracefully handle missing results (book not found in Open Library)
 
 ## Technical Requirements
 
-### Metadata sources (fallback chain):
-1. **Open Library API** (primary) – free, no key, ISBN/title/author search
-   - Returns title, author, cover, publish date, publisher, description
-   - Endpoint: `GET /api/books?bibkeys=ISBN:{isbn}&jscmd=data&format=json`
-2. **Google Books API** (secondary) – free tier, API key required
-   - Returns description, cover, author, publication date, ISBN variants
-   - Rate limit: 100 queries/day free; upgrade for more
-3. **Internet Archive API** (tertiary) – free, backup for descriptions
-   - Returns metadata and full-text preview
-4. **OCLC Classify** (utility) – free, no key, for ISBN validation and cross-references
+### Metadata Source:
+- **Open Library API** – free, no authentication required
+  - ISBN lookup: `GET /api/books?bibkeys=ISBN:{isbn}&jscmd=data&format=json`
+  - Title + Author search: `GET /search.json?title={title}&author={author}&limit=1`
+  - Response includes: title, author, cover image URL, publish date
 
-### Fuzzy matching:
-- Normalize strings (lowercase, remove punctuation, extra spaces)
-- Use Levenshtein distance or similar for title/author matching
-- ISBN matching: exact match only (ISBN-10 and ISBN-13 variants)
-- Scoring: ISBN match (score: 100), title+author match (50-90), title-only (30-50)
+### Implementation:
+- On initial library scan: identify books with missing cover or author
+- Create background queue of enrichment tasks
+- Process queue asynchronously (no blocking UI)
+- For each book: try ISBN first, then title + author
+- Download cover image and store locally
+- Store author name in book record
+- Cache Open Library responses to avoid duplicate requests
 
-### Deduplication:
-- Deduplicate by ISBN-13 > ISBN-10 > OCLC number > (title + author + year)
-- Return top 5 unique results; filter out reprints/editions below confidence threshold (40%)
-
-### Image handling:
+### Image Handling:
 - Download covers concurrently (max 3 simultaneous downloads)
-- Cache locally in `{app_cache}/covers/{isbn}.{jpg|png}`
-- Resize to S (200px), M (400px), L (600px) on import
-- Fallback to placeholder if download fails
+- Cache locally in `{app_cache}/covers/{isbn_or_title_hash}.{jpg|png}`
+- Store reference to cached image in book database
+- Fallback to placeholder image if download fails
 
-### Rate limiting & caching:
-- Cache metadata for 30 days; check for updates weekly
-- Open Library: no rate limit documented; safe for bulk queries
-- Google Books: 100/day free tier (batch requests)
-- Implement exponential backoff for 429/503 responses
-- Store all metadata locally to avoid repeat queries
+### Settings Integration:
+- Add checkbox in Settings under "Library" section
+- Label: "Get missing covers/metadata"
+- Default: enabled (on)
+- Toggling immediately affects queue processing
+
+### Data Persistence:
+- Store enrichment status per book: enriched (boolean), last_enriched_date (timestamp), last_attempted_date (timestamp)
+- Cache Open Library responses locally to prevent repeat requests
+- On rescan: only queue books that are new or have enriched=false
+- If a book failed enrichment, retry on next rescan (but not more than once per day)
+- Already enriched books are skipped entirely on rescan (no API calls)
+- Persist user's toggle preference in app settings
 
 ## Design Considerations
 
-### Match selection UI:
-- Show cover, title, author, narrator, publisher, release year for each match
-- Highlight differences between editions (e.g., "Narrated by X" vs. "Narrated by Y")
-- Display confidence score as visual indicator (e.g., "95% match")
-- "Skip enrichment" option to proceed without metadata
-- "Manual entry" option for non-ISBN lookups
-
-### Edit metadata UI:
-- Inline edit fields post-selection (title, author, narrator, publisher, description)
-- Allow image upload/replacement for cover
-- Show data source attribution (e.g., "Cover from Open Library")
-
-### Bulk import:
-- Progress indicator showing "Enriching X of Y books..."
-- Allow pause/resume
-- Show summary: "Successfully enriched 45, skipped 3, manual entry needed for 2"
+- Enrichment happens silently in background
+- No progress UI or notifications needed
+- User controls feature via single Settings toggle
+- No manual match selection or edit UI
+- Simple, non-intrusive implementation
 
 ## Success Metrics
 
-- 80%+ of imported books successfully enriched with ≥1 source
-- <5% of matches require manual correction (user acceptance rate >95%)
-- Average metadata fetch time <2s per book
-- Cover download success rate >90%
-- Users skip manual entry 70%+ of the time (indicates good auto-match)
+- 70%+ of books with ISBN successfully enriched
+- 60%+ of books with title + author match successfully enriched
+- Cover download success rate >85%
+- Enrichment completes within 24 hours of library scan
+- No performance impact on app startup or navigation
 
 ## Dependencies
 
 - HTTP client library with timeout and retry logic
-- Image processing library (resize, format conversion)
-- Fuzzy string matching library (Levenshtein, tf-idf, or similar)
-- ISBN validation library (for checksum verification)
-- SQLite or equivalent for metadata caching
+- Image caching library (local file storage)
+- SQLite or equivalent for book database
 
-## API Endpoints (Reference)
+## Related Features
 
-**Open Library:**
-```
-GET /api/books?bibkeys=ISBN:{isbn}&jscmd=data&format=json
-GET /search.json?title={title}&author={author}&limit=10
-GET /isbn/{isbn}.json
-```
-
-**Google Books:**
-```
-GET /books/v1/volumes?q=isbn:{isbn}&key={API_KEY}
-GET /books/v1/volumes?q={title}+{author}&key={API_KEY}
-```
-
-**Internet Archive:**
-```
-GET /metadata/{id}
-GET /advancedsearch.php?q=isbn:{isbn}&output=json
-```
+- PRD 2 (Remote Repository) – imported books may also need enrichment
+- PRD 5 (AZW3 Support) – AZW3 files may have embedded metadata to extract before enrichment
+- Settings (PRD 10) – includes toggle for this feature
 
 ## Priority
-**High** – Core UX feature; enables quick library builds
+
+**High** – Improves library appearance without user effort; quick win for UX.
+
+## Implementation Notes
+
+- Open Library has no rate limit, safe for bulk requests
+- Start with ISBN matching; title + author is fallback
+- Cache responses to avoid redundant requests
+- Keep queue simple: process one book at a time or in small batches
+- Handle network errors gracefully (mark as "retry later" instead of failing)
+- Test with books that don't exist in Open Library (should not error)

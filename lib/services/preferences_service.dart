@@ -3,6 +3,8 @@ import 'package:shared_preferences/shared_preferences.dart';
 class PreferencesService {
   static const _libraryPathKey = 'library_path';
   static const _analyticsConsentKey = 'analytics_consent';
+  static const _themeModeKey = 'theme_mode';
+  static const _metadataEnrichmentKey = 'metadata_enrichment';
 
   Future<String?> getLibraryPath() async {
     final prefs = await SharedPreferences.getInstance();
@@ -29,5 +31,26 @@ class PreferencesService {
   Future<void> setAnalyticsConsent(bool value) async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setBool(_analyticsConsentKey, value);
+  }
+
+  /// Returns null if no preference has been stored (treat as 'system').
+  Future<String?> getThemeMode() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getString(_themeModeKey);
+  }
+
+  Future<void> setThemeMode(String value) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(_themeModeKey, value);
+  }
+
+  Future<bool> getMetadataEnrichment() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getBool(_metadataEnrichmentKey) ?? true; // default on
+  }
+
+  Future<void> setMetadataEnrichment(bool value) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(_metadataEnrichmentKey, value);
   }
 }

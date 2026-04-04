@@ -29,4 +29,17 @@ class Audiobook {
     required this.audioFiles,
     this.chapterDurations = const [],
   });
+
+  Audiobook copyWith({String? coverImagePath, Uint8List? coverImageBytes}) {
+    return Audiobook(
+      title: title,
+      author: author,
+      duration: duration,
+      path: path,
+      coverImagePath: coverImagePath ?? this.coverImagePath,
+      coverImageBytes: coverImageBytes ?? this.coverImageBytes,
+      audioFiles: audioFiles,
+      chapterDurations: chapterDurations,
+    );
+  }
 }

@@ -1,7 +1,6 @@
 import 'package:audio_service/audio_service.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/material.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 import 'screens/consent_screen.dart';
 import 'screens/library_screen.dart';
 import 'screens/onboarding_screen.dart';
@@ -10,6 +9,22 @@ import 'services/preferences_service.dart';
 import 'services/telemetry_service.dart';
 
 late AudioVaultHandler audioHandler;
+
+/// Notifier that drives the app-wide theme mode. Update this to change the
+/// theme without restarting the app.
+final ValueNotifier<ThemeMode> themeModeNotifier =
+    ValueNotifier<ThemeMode>(ThemeMode.system);
+
+ThemeMode _themeModeFromString(String? value) {
+  switch (value) {
+    case 'light':
+      return ThemeMode.light;
+    case 'dark':
+      return ThemeMode.dark;
+    default:
+      return ThemeMode.system;
+  }
+}
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -35,25 +50,51 @@ void main() async {
     // Firebase not yet configured — app continues without telemetry.
   }
 
+  // Read persisted theme mode before first frame so there is no flash.
+  final storedTheme = await PreferencesService().getThemeMode();
+  themeModeNotifier.value = _themeModeFromString(storedTheme);
+
   runApp(const AudioVaultApp());
 }
 
-class AudioVaultApp extends StatelessWidget {
+class AudioVaultApp extends StatefulWidget {
   const AudioVaultApp({super.key});
 
   @override
+  State<AudioVaultApp> createState() => _AudioVaultAppState();
+}
+
+class _AudioVaultAppState extends State<AudioVaultApp> {
+  static final _lightTheme = ThemeData(
+    colorScheme: ColorScheme.fromSeed(
+      seedColor: const Color(0xFF6B4C9A),
+      brightness: Brightness.light,
+    ),
+    useMaterial3: true,
+  );
+
+  static final _darkTheme = ThemeData(
+    colorScheme: ColorScheme.fromSeed(
+      seedColor: const Color(0xFF6B4C9A),
+      brightness: Brightness.dark,
+    ),
+    useMaterial3: true,
+  );
+
+  @override
   Widget build(BuildContext context) {
-    return MaterialApp(
-      title: 'AudioVault',
-      debugShowCheckedModeBanner: false,
-      theme: ThemeData(
-        colorScheme: ColorScheme.fromSeed(
-          seedColor: const Color(0xFF6B4C9A),
-          brightness: Brightness.dark,
-        ),
-        useMaterial3: true,
-      ),
-      home: const _AppEntryPoint(),
+    return ValueListenableBuilder<ThemeMode>(
+      valueListenable: themeModeNotifier,
+      builder: (context, themeMode, _) {
+        return MaterialApp(
+          title: 'AudioVault',
+          debugShowCheckedModeBanner: false,
+          theme: _lightTheme,
+          darkTheme: _darkTheme,
+          themeMode: themeMode,
+          home: const _AppEntryPoint(),
+        );
+      },
     );
   }
 }

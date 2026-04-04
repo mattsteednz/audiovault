@@ -4,6 +4,7 @@ import 'package:audio_service/audio_service.dart';
 import 'package:flutter/material.dart';
 import '../main.dart';
 import '../models/audiobook.dart';
+import '../services/enrichment_service.dart';
 import '../services/position_service.dart';
 import '../services/preferences_service.dart';
 import '../services/scanner_service.dart';
@@ -33,11 +34,13 @@ class _LibraryScreenState extends State<LibraryScreen> {
   String? _activePath;
   bool _isPlaying = false;
   StreamSubscription<PlaybackState>? _playbackSub;
+  StreamSubscription<({String bookPath, String coverPath})>? _enrichSub;
 
   @override
   void initState() {
     super.initState();
     _scan();
+    _enrichSub = EnrichmentService().onCoverFetched.listen(_onCoverFetched);
     _playbackSub = audioHandler.playbackState.listen((state) {
       final newPath = audioHandler.currentBook?.path;
       if (newPath != _activePath || state.playing != _isPlaying) {
@@ -52,6 +55,7 @@ class _LibraryScreenState extends State<LibraryScreen> {
   @override
   void dispose() {
     _playbackSub?.cancel();
+    _enrichSub?.cancel();
     super.dispose();
   }
 
@@ -72,9 +76,27 @@ class _LibraryScreenState extends State<LibraryScreen> {
         return;
       }
       final books = await ScannerService().scanFolder(path);
-      _rawBooks = books;
+
+      // Apply any covers already fetched in a previous session.
+      final cachedCovers = await EnrichmentService().getAllEnrichedCovers();
+      _rawBooks = cachedCovers.isEmpty
+          ? books
+          : books.map((b) {
+              if (b.coverImagePath != null || b.coverImageBytes != null) {
+                return b;
+              }
+              final cached = cachedCovers[b.path];
+              return cached != null ? b.copyWith(coverImagePath: cached) : b;
+            }).toList();
+
       await _applySort();
       setState(() => _scanning = false);
+
+      // Start background enrichment for books missing covers.
+      final enrichEnabled = await PreferencesService().getMetadataEnrichment();
+      if (enrichEnabled) {
+        unawaited(EnrichmentService().enqueueBooks(_rawBooks!));
+      }
 
       // Restore the last-played book into the handler so the mini player
       // appears immediately on launch (without auto-playing).
@@ -116,6 +138,17 @@ class _LibraryScreenState extends State<LibraryScreen> {
       _lastPlayedMs = played;
       _books = [...withHistory, ...withoutHistory];
     });
+  }
+
+  void _onCoverFetched(({String bookPath, String coverPath}) event) {
+    final raw = _rawBooks;
+    if (raw == null) return;
+    final idx = raw.indexWhere((b) => b.path == event.bookPath);
+    if (idx == -1) return;
+    final updated = List<Audiobook>.from(raw);
+    updated[idx] = raw[idx].copyWith(coverImagePath: event.coverPath);
+    _rawBooks = updated;
+    _applySort();
   }
 
   void _openPlayer(BuildContext context, Audiobook book) {

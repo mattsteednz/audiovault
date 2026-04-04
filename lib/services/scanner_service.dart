@@ -57,7 +57,7 @@ class ScannerService {
         .where((f) => _isAudio(f.path))
         .map((f) => f.path)
         .toList()
-      ..sort();
+      ..sort(_naturalSort);
 
     final imageFiles = allFiles.where((f) => _isImage(f.path)).toList();
 
@@ -151,6 +151,28 @@ class ScannerService {
       }
     }
     return images.first.path;
+  }
+
+  /// Natural sort: compares strings by splitting into numeric and non-numeric
+  /// segments so that "2.mp3" < "10.mp3" < "100.mp3".
+  int _naturalSort(String a, String b) {
+    final nameA = p.basename(a).toLowerCase();
+    final nameB = p.basename(b).toLowerCase();
+    final re = RegExp(r'(\d+)|(\D+)');
+    final segA = re.allMatches(nameA).toList();
+    final segB = re.allMatches(nameB).toList();
+    final len = segA.length < segB.length ? segA.length : segB.length;
+    for (var i = 0; i < len; i++) {
+      final sa = segA[i].group(0)!;
+      final sb = segB[i].group(0)!;
+      final na = int.tryParse(sa);
+      final nb = int.tryParse(sb);
+      final cmp = (na != null && nb != null)
+          ? na.compareTo(nb)
+          : sa.compareTo(sb);
+      if (cmp != 0) return cmp;
+    }
+    return segA.length.compareTo(segB.length);
   }
 
   bool _isAudio(String path) => _audioExtensions.contains(p.extension(path).toLowerCase());

@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:io';
 import 'package:audio_service/audio_service.dart';
+import 'package:flutter/foundation.dart';
 import 'package:just_audio/just_audio.dart';
 import 'package:path_provider/path_provider.dart';
 import '../models/audiobook.dart';
@@ -16,8 +17,18 @@ class AudioVaultHandler extends BaseAudioHandler {
   Audiobook? get currentBook => _book;
 
   AudioVaultHandler() {
-    _player.playbackEventStream.listen(_broadcastState);
-    _player.currentIndexStream.listen((_) => _broadcastState(null));
+    _player.playbackEventStream.listen(
+      _broadcastState,
+      onError: (error, stackTrace) {
+        debugPrint('[AudioVault:Player] Playback error: $error');
+      },
+    );
+    _player.currentIndexStream.listen(
+      (_) => _broadcastState(null),
+      onError: (error, stackTrace) {
+        debugPrint('[AudioVault:Player] Index stream error: $error');
+      },
+    );
 
     // Start/stop periodic save as playback state changes.
     _player.playingStream.listen((playing) {
