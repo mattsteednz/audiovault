@@ -2,6 +2,8 @@ import 'dart:async';
 import 'dart:io';
 import 'package:audio_service/audio_service.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_chrome_cast/flutter_chrome_cast.dart';
+import 'package:path/path.dart' as p;
 import '../main.dart';
 import '../models/audiobook.dart';
 
@@ -106,9 +108,85 @@ class _PlayerScreenState extends State<PlayerScreen> {
     });
   }
 
+  // ── Cast device picker ───────────────────────────────────────────────────────
+
+  Future<void> _showCastPicker() async {
+    final discovery = GoogleCastDiscoveryManager.instance;
+    final sessionManager = GoogleCastSessionManager.instance;
+
+    await discovery.startDiscovery();
+    if (!mounted) return;
+
+    await showDialog<void>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Cast to device'),
+        content: SizedBox(
+          width: double.maxFinite,
+          child: StreamBuilder<List<GoogleCastDevice>>(
+            stream: discovery.devicesStream,
+            initialData: discovery.devices,
+            builder: (ctx, snap) {
+              final devices = snap.data ?? [];
+              if (devices.isEmpty) {
+                return const Padding(
+                  padding: EdgeInsets.symmetric(vertical: 16),
+                  child: Row(
+                    children: [
+                      SizedBox(
+                        width: 20,
+                        height: 20,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      ),
+                      SizedBox(width: 12),
+                      Text('Scanning for devices…'),
+                    ],
+                  ),
+                );
+              }
+              return ListView.builder(
+                shrinkWrap: true,
+                itemCount: devices.length,
+                itemBuilder: (ctx, i) {
+                  final device = devices[i];
+                  return ListTile(
+                    leading: const Icon(Icons.cast),
+                    title: Text(device.friendlyName),
+                    subtitle: device.modelName != null ? Text(device.modelName!) : null,
+                    onTap: () {
+                      sessionManager.startSessionWithDevice(device);
+                      Navigator.of(ctx).pop();
+                    },
+                  );
+                },
+              );
+            },
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(),
+            child: const Text('Cancel'),
+          ),
+        ],
+      ),
+    );
+
+    await discovery.stopDiscovery();
+  }
+
   // ── Helpers ─────────────────────────────────────────────────────────────────
 
   String _fmt(Duration d) {
+    final h = d.inHours;
+    final m = d.inMinutes.remainder(60).toString().padLeft(2, '0');
+    final s = d.inSeconds.remainder(60).toString().padLeft(2, '0');
+    return h > 0 ? '$h:$m:$s' : '$m:$s';
+  }
+
+  /// Formats a duration as m:ss (or h:mm:ss if >= 1 hour).
+  String _fmtHM(Duration d) {
+    if (d < Duration.zero) d = Duration.zero;
     final h = d.inHours;
     final m = d.inMinutes.remainder(60).toString().padLeft(2, '0');
     final s = d.inSeconds.remainder(60).toString().padLeft(2, '0');
@@ -123,6 +201,142 @@ class _PlayerScreenState extends State<PlayerScreen> {
 
   bool get _timerActive => _sleepTimer != null || _stopAtChapterEnd;
 
+  // ── Chapter helpers ──────────────────────────────────────────────────────────
+
+  /// For M4B books with embedded chapters, returns the index of the chapter
+  /// that contains [position].
+  int _m4bChapterAt(Duration position, List<Chapter> chapters) {
+    int current = 0;
+    for (int i = 0; i < chapters.length; i++) {
+      if (position >= chapters[i].start) {
+        current = i;
+      } else {
+        break;
+      }
+    }
+    return current;
+  }
+
+  Future<void> _showChapterList(BuildContext context) async {
+    final book = widget.book;
+    final isM4b = book.chapters.isNotEmpty;
+    final chapCount = isM4b ? book.chapters.length : book.audioFiles.length;
+
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      builder: (ctx) {
+        return DraggableScrollableSheet(
+          initialChildSize: 0.5,
+          minChildSize: 0.3,
+          maxChildSize: 0.85,
+          expand: false,
+          builder: (ctx, scrollCtrl) {
+            return Column(
+              children: [
+                Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 12),
+                  child: Container(
+                    width: 40,
+                    height: 4,
+                    decoration: BoxDecoration(
+                      color: Theme.of(ctx).colorScheme.outlineVariant,
+                      borderRadius: BorderRadius.circular(2),
+                    ),
+                  ),
+                ),
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 8),
+                  child: Text(
+                    'Chapters',
+                    style: Theme.of(ctx).textTheme.titleMedium,
+                  ),
+                ),
+                Expanded(
+                  child: isM4b
+                      ? StreamBuilder<Duration>(
+                          stream: audioHandler.player.positionStream,
+                          builder: (ctx, snap) {
+                            final pos = snap.data ?? Duration.zero;
+                            final currentIdx =
+                                _m4bChapterAt(pos, book.chapters);
+                            return _chapterListView(
+                              scrollCtrl: scrollCtrl,
+                              count: chapCount,
+                              currentIndex: currentIdx,
+                              title: (i) => book.chapters[i].title,
+                              onTap: (i) {
+                                audioHandler.seek(book.chapters[i].start);
+                                Navigator.of(ctx).pop();
+                              },
+                            );
+                          },
+                        )
+                      : StreamBuilder<int?>(
+                          stream: audioHandler.player.currentIndexStream,
+                          builder: (ctx, snap) {
+                            final currentIdx = snap.data ?? 0;
+                            return _chapterListView(
+                              scrollCtrl: scrollCtrl,
+                              count: chapCount,
+                              currentIndex: currentIdx,
+                              title: (i) => p.basenameWithoutExtension(
+                                  book.audioFiles[i]),
+                              onTap: (i) {
+                                audioHandler.player
+                                    .seek(Duration.zero, index: i);
+                                Navigator.of(ctx).pop();
+                              },
+                            );
+                          },
+                        ),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+  }
+
+  Widget _chapterListView({
+    required ScrollController scrollCtrl,
+    required int count,
+    required int currentIndex,
+    required String Function(int) title,
+    required void Function(int) onTap,
+  }) {
+    final theme = Theme.of(context);
+    return ListView.builder(
+      controller: scrollCtrl,
+      itemCount: count,
+      itemBuilder: (ctx, i) {
+        final isCurrent = i == currentIndex;
+        return ListTile(
+          leading: isCurrent
+              ? Icon(Icons.volume_up_rounded,
+                  color: theme.colorScheme.primary, size: 20)
+              : Text(
+                  '${i + 1}',
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: theme.colorScheme.onSurface.withValues(alpha: 0.5),
+                  ),
+                ),
+          title: Text(
+            title(i),
+            style: theme.textTheme.bodyMedium?.copyWith(
+              fontWeight: isCurrent ? FontWeight.bold : null,
+              color: isCurrent ? theme.colorScheme.primary : null,
+            ),
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+          ),
+          onTap: () => onTap(i),
+        );
+      },
+    );
+  }
+
   // ── Build ────────────────────────────────────────────────────────────────────
 
   @override
@@ -134,6 +348,24 @@ class _PlayerScreenState extends State<PlayerScreen> {
     return Scaffold(
       appBar: AppBar(
         title: Text(book.title, maxLines: 1, overflow: TextOverflow.ellipsis),
+        actions: [
+          StreamBuilder<GoogleCastSession?>(
+            stream: GoogleCastSessionManager.instance.currentSessionStream,
+            builder: (context, _) {
+              final connected =
+                  GoogleCastSessionManager.instance.connectionState ==
+                  GoogleCastConnectState.connected;
+              return IconButton(
+                tooltip: connected ? 'Stop casting' : 'Cast',
+                icon: Icon(connected ? Icons.cast_connected : Icons.cast),
+                color: connected ? Theme.of(context).colorScheme.primary : null,
+                onPressed: connected
+                    ? GoogleCastSessionManager.instance.endSessionAndStopCasting
+                    : _showCastPicker,
+              );
+            },
+          ),
+        ],
       ),
       body: SafeArea(
         child: Padding(
@@ -159,7 +391,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
               _infoSection(book, chapterCount, theme),
               const SizedBox(height: 12),
               // ── Progress slider ──
-              _progressSection(theme),
+              _progressSection(book, theme),
               const SizedBox(height: 8),
               // ── Playback controls ──
               _controlsSection(theme),
@@ -199,6 +431,29 @@ class _PlayerScreenState extends State<PlayerScreen> {
   // ── Info section ───────────────────────────────────────────────────────────
 
   Widget _infoSection(Audiobook book, int chapterCount, ThemeData theme) {
+    final isM4b = book.chapters.isNotEmpty;
+    final totalChapters = isM4b ? book.chapters.length : chapterCount;
+    final hasChapters = totalChapters > 1;
+
+    Widget chapterLabel(int currentIndex) => GestureDetector(
+          onTap: hasChapters ? () => _showChapterList(context) : null,
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                'Chapter ${currentIndex + 1} of $totalChapters',
+                style: theme.textTheme.bodySmall
+                    ?.copyWith(color: theme.colorScheme.primary),
+              ),
+              if (hasChapters) ...[
+                const SizedBox(width: 2),
+                Icon(Icons.expand_more_rounded,
+                    size: 16, color: theme.colorScheme.primary),
+              ],
+            ],
+          ),
+        );
+
     return Column(children: [
       Text(
         book.title,
@@ -216,20 +471,32 @@ class _PlayerScreenState extends State<PlayerScreen> {
           ),
         ),
       ],
-      if (chapterCount > 1) ...[
+      if (hasChapters) ...[
         const SizedBox(height: 4),
-        Text(
-          'Chapter ${_lastChapterIndex + 1} of $chapterCount',
-          style: theme.textTheme.bodySmall
-              ?.copyWith(color: theme.colorScheme.primary),
-        ),
+        if (isM4b)
+          // For M4B: derive current chapter from playback position
+          StreamBuilder<Duration>(
+            stream: audioHandler.player.positionStream,
+            builder: (_, snap) {
+              final pos = snap.data ?? Duration.zero;
+              final idx = _m4bChapterAt(pos, book.chapters);
+              return chapterLabel(idx);
+            },
+          )
+        else
+          // For multi-file: use just_audio's current index
+          StreamBuilder<int?>(
+            stream: audioHandler.player.currentIndexStream,
+            builder: (_, snap) => chapterLabel(snap.data ?? 0),
+          ),
       ],
     ]);
   }
 
   // ── Progress section ───────────────────────────────────────────────────────
 
-  Widget _progressSection(ThemeData theme) {
+  Widget _progressSection(Audiobook book, ThemeData theme) {
+    final isM4b = book.chapters.isNotEmpty;
     return StreamBuilder<Duration?>(
       stream: audioHandler.player.durationStream,
       builder: (_, durSnap) {
@@ -243,6 +510,28 @@ class _PlayerScreenState extends State<PlayerScreen> {
             final value = maxMs > 0
                 ? displayed.inMilliseconds.toDouble().clamp(0.0, maxMs)
                 : 0.0;
+
+            // Snap to whole seconds so both labels always tick together
+            final displayedSec =
+                Duration(seconds: displayed.inSeconds);
+
+            // Chapter-scoped elapsed and remaining
+            final Duration chapterElapsed;
+            final Duration chapterRemaining;
+            if (isM4b) {
+              final chIdx = _m4bChapterAt(displayedSec, book.chapters);
+              final chStart = book.chapters[chIdx].start;
+              final chEnd = (chIdx + 1 < book.chapters.length)
+                  ? book.chapters[chIdx + 1].start
+                  : dur;
+              chapterElapsed = displayedSec - chStart;
+              chapterRemaining = chEnd - displayedSec;
+            } else {
+              // MP3: positionStream/durationStream are already per-file
+              chapterElapsed = displayedSec;
+              chapterRemaining = dur - displayedSec;
+            }
+
             return Column(children: [
               SliderTheme(
                 data: SliderTheme.of(context).copyWith(
@@ -267,8 +556,10 @@ class _PlayerScreenState extends State<PlayerScreen> {
                 child: Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    Text(_fmt(displayed), style: theme.textTheme.bodySmall),
-                    Text(_fmt(dur), style: theme.textTheme.bodySmall),
+                    Text(_fmtHM(chapterElapsed),
+                        style: theme.textTheme.bodySmall),
+                    Text('-${_fmtHM(chapterRemaining)}',
+                        style: theme.textTheme.bodySmall),
                   ],
                 ),
               ),

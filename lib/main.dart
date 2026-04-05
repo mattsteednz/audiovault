@@ -1,6 +1,8 @@
+import 'dart:io';
 import 'package:audio_service/audio_service.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_chrome_cast/flutter_chrome_cast.dart';
 import 'screens/consent_screen.dart';
 import 'screens/library_screen.dart';
 import 'screens/onboarding_screen.dart';
@@ -41,6 +43,26 @@ void main() async {
       rewindInterval: Duration(seconds: 30),
     ),
   );
+
+  // Initialise Google Cast — silently ignored if not available.
+  try {
+    const appId = GoogleCastDiscoveryCriteria.kDefaultApplicationId;
+    GoogleCastOptions options;
+    if (Platform.isIOS) {
+      options = IOSGoogleCastOptions(
+        GoogleCastDiscoveryCriteriaInitialize.initWithApplicationID(appId),
+        stopCastingOnAppTerminated: true,
+      );
+    } else {
+      options = GoogleCastOptionsAndroid(
+        appId: appId,
+        stopCastingOnAppTerminated: true,
+      );
+    }
+    GoogleCastContext.instance.setSharedInstanceWithOptions(options);
+  } catch (_) {
+    // Cast not available on this platform or emulator — app continues.
+  }
 
   // Initialise Firebase — silently ignored if config files are placeholders.
   try {

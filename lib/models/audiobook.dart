@@ -1,5 +1,17 @@
 import 'dart:typed_data';
 
+/// A single chapter within an audiobook.
+///
+/// For multi-file books (MP3) [start] is always [Duration.zero] and [index]
+/// is the position in [Audiobook.audioFiles].
+/// For single-file books (M4B) [start] is the absolute seek offset into the file.
+class Chapter {
+  final String title;
+  final Duration start;
+
+  const Chapter({required this.title, required this.start});
+}
+
 class Audiobook {
   final String title;
   final String? author;
@@ -19,6 +31,13 @@ class Audiobook {
   /// Duration of each individual audio file, in the same order as [audioFiles].
   final List<Duration> chapterDurations;
 
+  /// Embedded chapters parsed from a single M4B file (empty for multi-file books).
+  final List<Chapter> chapters;
+
+  /// True when the folder contains only DRM-locked files (e.g. .aax, .aa)
+  /// that cannot be played by the app.
+  final bool isDrmLocked;
+
   const Audiobook({
     required this.title,
     this.author,
@@ -28,6 +47,8 @@ class Audiobook {
     this.coverImageBytes,
     required this.audioFiles,
     this.chapterDurations = const [],
+    this.chapters = const [],
+    this.isDrmLocked = false,
   });
 
   Audiobook copyWith({String? coverImagePath, Uint8List? coverImageBytes}) {
@@ -40,6 +61,8 @@ class Audiobook {
       coverImageBytes: coverImageBytes ?? this.coverImageBytes,
       audioFiles: audioFiles,
       chapterDurations: chapterDurations,
+      chapters: chapters,
+      isDrmLocked: isDrmLocked,
     );
   }
 }

@@ -1,0 +1,12 @@
+{
+  "name": "audiovault-deploy",
+  "type": "module",
+  "private": true,
+  "scripts": {
+    "deploy": "node deploy.mjs",
+    "deploy:debug": "node deploy.mjs --debug"
+  },
+  "dependencies": {
+    "ssh2-sftp-client": "^10.0.3"
+  }
+}

@@ -152,6 +152,29 @@ class _LibraryScreenState extends State<LibraryScreen> {
   }
 
   void _openPlayer(BuildContext context, Audiobook book) {
+    if (book.isDrmLocked) {
+      showDialog<void>(
+        context: context,
+        builder: (_) => AlertDialog(
+          icon: const Icon(Icons.lock_rounded),
+          title: const Text('DRM-Protected File'),
+          content: const Text(
+            'This audiobook is in Audible\'s AAX/AA format and is protected '
+            'by DRM (Digital Rights Management). AudioVault cannot play '
+            'DRM-protected files.\n\n'
+            'To listen, use the Audible app, or convert the file to a '
+            'DRM-free format using a tool that supports your local laws.',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('OK'),
+            ),
+          ],
+        ),
+      );
+      return;
+    }
     Navigator.push(
       context,
       MaterialPageRoute(builder: (_) => PlayerScreen(book: book)),
@@ -263,7 +286,6 @@ class _LibraryScreenState extends State<LibraryScreen> {
       itemCount: books.length,
       itemBuilder: (context, i) => AudiobookCard(
         book: books[i],
-        lastPlayedMs: _lastPlayedMs[books[i].path],
         isActive: books[i].path == _activePath && _isPlaying,
         onTap: () => _openPlayer(context, books[i]),
       ),
@@ -277,7 +299,6 @@ class _LibraryScreenState extends State<LibraryScreen> {
       separatorBuilder: (_, __) => const Divider(height: 1, indent: 88),
       itemBuilder: (context, i) => AudiobookListTile(
         book: books[i],
-        lastPlayedMs: _lastPlayedMs[books[i].path],
         isActive: books[i].path == _activePath && _isPlaying,
         onTap: () => _openPlayer(context, books[i]),
       ),

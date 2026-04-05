@@ -1,4 +1,6 @@
+import 'dart:convert';
 import 'dart:io';
+import 'dart:typed_data';
 import 'package:audio_metadata_reader/audio_metadata_reader.dart';
 import 'package:flutter/foundation.dart';
 import 'package:path/path.dart' as p;
@@ -7,6 +9,8 @@ import '../models/audiobook.dart';
 class ScannerService {
   static const _audioExtensions = {'.mp3', '.m4a', '.aac', '.m4b'};
   static const _imageExtensions = {'.jpg', '.jpeg', '.png', '.webp'};
+  // Audible formats — detected but not playable due to DRM.
+  static const _drmExtensions = {'.aax', '.aa'};
 
   static void _log(String msg) => debugPrint('[AudioVault:Scanner] $msg');
 
@@ -65,6 +69,23 @@ class ScannerService {
     _log('    Images(${imageFiles.length}): ${imageFiles.map((f) => p.basename(f.path)).join(', ')}');
 
     if (audioFiles.isEmpty) {
+      // Check for DRM-locked Audible files before skipping.
+      final drmFiles = allFiles.where((f) => _isDrm(f.path)).toList();
+      if (drmFiles.isNotEmpty) {
+        // Use the filename (minus extension) as title when there is only one
+        // file; otherwise fall back to the folder name.
+        final title = drmFiles.length == 1
+            ? p.basenameWithoutExtension(drmFiles.first.path)
+            : name;
+        _log('    → DRM-LOCKED (${drmFiles.length} file(s): '
+            '${drmFiles.map((f) => p.basename(f.path)).join(', ')})');
+        return Audiobook(
+          title: title,
+          path: dir.path,
+          audioFiles: const [],
+          isDrmLocked: true,
+        );
+      }
       _log('    → SKIP (no recognised audio files)');
       return null;
     }
@@ -117,6 +138,14 @@ class ScannerService {
       }
     }
 
+    // Parse embedded chapters for single M4B files.
+    List<Chapter> chapters = const [];
+    if (audioFiles.length == 1 &&
+        p.extension(audioFiles.first).toLowerCase() == '.m4b') {
+      chapters = await _parseM4bChapters(audioFiles.first);
+      _log('    M4B chapters: ${chapters.length}');
+    }
+
     final duration = totalDuration == Duration.zero ? null : totalDuration;
     _log('    title="$title" author="${author ?? 'none'}" '
         'duration=${duration?.toString() ?? 'unknown'} '
@@ -132,7 +161,310 @@ class ScannerService {
       coverImageBytes: coverBytes,
       audioFiles: audioFiles,
       chapterDurations: chapterDurations,
+      chapters: chapters,
     );
+  }
+
+  // ── M4B chapter parsing ───────────────────────────────────────────────────
+
+  /// Entry point: tries Nero `chpl` first, then QuickTime chapter track.
+  Future<List<Chapter>> _parseM4bChapters(String filePath) async {
+    RandomAccessFile? raf;
+    try {
+      raf = await File(filePath).open();
+      final fileSize = await raf.length();
+
+      // Try Nero chpl (less common)
+      final nero = await _scanForChpl(raf, 0, fileSize);
+      if (nero.isNotEmpty) {
+        _log('    M4B chapters (Nero): ${nero.length}');
+        return nero;
+      }
+
+      // Try QuickTime chapter track (iTunes / Audible format)
+      final qt = await _parseQTChapters(raf, fileSize);
+      _log('    M4B chapters (QT): ${qt.length}');
+      return qt;
+    } catch (e) {
+      _log('    M4B chapter parse error: $e');
+      return const [];
+    } finally {
+      await raf?.close();
+    }
+  }
+
+  // ── Shared MP4 box utilities ──────────────────────────────────────────────
+
+  /// Returns all direct child boxes within [start, end] as (type, dataStart, boxEnd).
+  Future<List<(String, int, int)>> _listBoxes(
+      RandomAccessFile raf, int start, int end) async {
+    final result = <(String, int, int)>[];
+    var pos = start;
+    while (pos + 8 <= end) {
+      await raf.setPosition(pos);
+      final hdr = await raf.read(8);
+      if (hdr.length < 8) break;
+      final bd = ByteData.sublistView(Uint8List.fromList(hdr));
+      var sz = bd.getUint32(0, Endian.big);
+      final type = String.fromCharCodes(hdr.sublist(4, 8));
+      int dataStart = pos + 8;
+      if (sz == 1) {
+        final ext = await raf.read(8);
+        if (ext.length < 8) break;
+        final ebd = ByteData.sublistView(Uint8List.fromList(ext));
+        sz = (ebd.getUint32(0, Endian.big) << 32) | ebd.getUint32(4, Endian.big);
+        dataStart = pos + 16;
+      } else if (sz == 0) {
+        sz = end - pos;
+      }
+      if (sz < 8) break;
+      result.add((type, dataStart, pos + sz));
+      pos += sz;
+    }
+    return result;
+  }
+
+  /// First box matching [type] in [boxes], or null.
+  (String, int, int)? _firstBox(List<(String, int, int)> boxes, String type) {
+    for (final b in boxes) {
+      if (b.$1 == type) return b;
+    }
+    return null;
+  }
+
+  /// Reads the data portion of [box] into memory.
+  Future<Uint8List> _readBox(RandomAccessFile raf, (String, int, int) box) async {
+    final len = box.$3 - box.$2;
+    await raf.setPosition(box.$2);
+    return Uint8List.fromList(await raf.read(len));
+  }
+
+  // ── Nero chpl format ──────────────────────────────────────────────────────
+
+  Future<List<Chapter>> _scanForChpl(
+      RandomAccessFile raf, int start, int end) async {
+    final boxes = await _listBoxes(raf, start, end);
+    for (final box in boxes) {
+      if (box.$1 == 'chpl') {
+        return _parseChpl(await _readBox(raf, box));
+      }
+      if (box.$1 == 'moov' || box.$1 == 'udta' || box.$1 == 'meta') {
+        final result = await _scanForChpl(raf, box.$2, box.$3);
+        if (result.isNotEmpty) return result;
+      }
+    }
+    return const [];
+  }
+
+  List<Chapter> _parseChpl(Uint8List data) {
+    if (data.length < 9) return const [];
+    final bd = ByteData.sublistView(data);
+    int offset = 5; // version(1) + flags(3) + reserved(1)
+    if (offset + 4 > data.length) return const [];
+    final count = bd.getUint32(offset, Endian.big);
+    offset += 4;
+    final chapters = <Chapter>[];
+    for (int i = 0; i < count; i++) {
+      if (offset + 9 > data.length) break;
+      final hi = bd.getUint32(offset, Endian.big);
+      final lo = bd.getUint32(offset + 4, Endian.big);
+      final units100ns = (hi << 32) | lo;
+      offset += 8;
+      final titleLen = data[offset++];
+      if (offset + titleLen > data.length) break;
+      chapters.add(Chapter(
+        title: utf8.decode(data.sublist(offset, offset + titleLen),
+            allowMalformed: true),
+        start: Duration(microseconds: units100ns ~/ 10),
+      ));
+      offset += titleLen;
+    }
+    return chapters;
+  }
+
+  // ── QuickTime chapter track format ────────────────────────────────────────
+  //
+  // iTunes M4B files store chapters as a separate text `trak` identified by
+  // a `gmhd` (generic media header) inside its `minf`. The audio trak has a
+  // `tref/chap` reference pointing to this track. Chapter timestamps come
+  // from `stts` (time-to-sample table) and titles are text samples read via
+  // `stco` (chunk offsets) + `stsz` (sample sizes).
+
+  Future<List<Chapter>> _parseQTChapters(
+      RandomAccessFile raf, int fileSize) async {
+    final top = await _listBoxes(raf, 0, fileSize);
+    final moov = _firstBox(top, 'moov');
+    if (moov == null) return const [];
+
+    final moovBoxes = await _listBoxes(raf, moov.$2, moov.$3);
+    for (final box in moovBoxes) {
+      if (box.$1 != 'trak') continue;
+      final chapters = await _tryQTChapterTrak(raf, box);
+      if (chapters.isNotEmpty) return chapters;
+    }
+    return const [];
+  }
+
+  Future<List<Chapter>> _tryQTChapterTrak(
+      RandomAccessFile raf, (String, int, int) trak) async {
+    final trakBoxes = await _listBoxes(raf, trak.$2, trak.$3);
+    final mdia = _firstBox(trakBoxes, 'mdia');
+    if (mdia == null) return const [];
+
+    final mdiaBoxes = await _listBoxes(raf, mdia.$2, mdia.$3);
+    final mdhd = _firstBox(mdiaBoxes, 'mdhd');
+    final minf = _firstBox(mdiaBoxes, 'minf');
+    if (mdhd == null || minf == null) return const [];
+
+    final minfBoxes = await _listBoxes(raf, minf.$2, minf.$3);
+    // gmhd = generic media header; present in chapter/text tracks
+    if (_firstBox(minfBoxes, 'gmhd') == null) return const [];
+
+    final stbl = _firstBox(minfBoxes, 'stbl');
+    if (stbl == null) return const [];
+
+    final stblBoxes = await _listBoxes(raf, stbl.$2, stbl.$3);
+    final stts = _firstBox(stblBoxes, 'stts');
+    final stsz = _firstBox(stblBoxes, 'stsz');
+    final stco = _firstBox(stblBoxes, 'stco');
+    final co64 = _firstBox(stblBoxes, 'co64');
+    final stsc = _firstBox(stblBoxes, 'stsc');
+    if (stts == null || stsz == null || (stco == null && co64 == null)) {
+      return const [];
+    }
+
+    return await _extractQTChapters(raf, mdhd, stts, stsz, stco ?? co64!, stsc,
+        isco64: stco == null);
+  }
+
+  Future<List<Chapter>> _extractQTChapters(
+    RandomAccessFile raf,
+    (String, int, int) mdhd,
+    (String, int, int) stts,
+    (String, int, int) stsz,
+    (String, int, int) stco,
+    (String, int, int)? stsc, {
+    bool isco64 = false,
+  }) async {
+    final mdhdData = await _readBox(raf, mdhd);
+    final sttsData = await _readBox(raf, stts);
+    final stszData = await _readBox(raf, stsz);
+    final stcoData = await _readBox(raf, stco);
+    final stscData = stsc != null ? await _readBox(raf, stsc) : null;
+
+    // Time scale from mdhd (version 0: offset 12; version 1: offset 20)
+    final mdhdBD = ByteData.sublistView(mdhdData);
+    final timeScale = mdhdBD.getUint32(mdhdData[0] == 1 ? 20 : 12, Endian.big);
+    if (timeScale == 0) return const [];
+
+    // Sample start times from stts (time-to-sample table)
+    final sttsBD = ByteData.sublistView(sttsData);
+    final sttsCount = sttsBD.getUint32(4, Endian.big);
+    final sampleStarts = <int>[];
+    int ticks = 0, off = 8;
+    for (int i = 0; i < sttsCount && off + 8 <= sttsData.length; i++) {
+      final n = sttsBD.getUint32(off, Endian.big);     // sample count in run
+      final d = sttsBD.getUint32(off + 4, Endian.big); // duration per sample
+      for (int j = 0; j < n; j++) {
+        sampleStarts.add(ticks);
+        ticks += d;
+      }
+      off += 8;
+    }
+
+    // Sample sizes from stsz
+    final stszBD = ByteData.sublistView(stszData);
+    final defSz = stszBD.getUint32(4, Endian.big);
+    final sampleCount = stszBD.getUint32(8, Endian.big);
+    final sizes = <int>[];
+    if (defSz == 0) {
+      off = 12;
+      for (int i = 0; i < sampleCount && off + 4 <= stszData.length; i++, off += 4) {
+        sizes.add(stszBD.getUint32(off, Endian.big));
+      }
+    } else {
+      sizes.addAll(List.filled(sampleCount, defSz));
+    }
+
+    // Chunk file offsets from stco (32-bit) or co64 (64-bit)
+    final stcoBD = ByteData.sublistView(stcoData);
+    final chunkCount = stcoBD.getUint32(4, Endian.big);
+    final chunkOffsets = <int>[];
+    off = 8;
+    if (isco64) {
+      for (int i = 0; i < chunkCount && off + 8 <= stcoData.length; i++, off += 8) {
+        final hi = stcoBD.getUint32(off, Endian.big);
+        final lo = stcoBD.getUint32(off + 4, Endian.big);
+        chunkOffsets.add((hi << 32) | lo);
+      }
+    } else {
+      for (int i = 0; i < chunkCount && off + 4 <= stcoData.length; i++, off += 4) {
+        chunkOffsets.add(stcoBD.getUint32(off, Endian.big));
+      }
+    }
+
+    // Map sample index → file offset using stsc (sample-to-chunk table)
+    final sampleOffsets = <int>[];
+    if (stscData != null && stscData.length >= 8) {
+      final stscBD = ByteData.sublistView(stscData);
+      final stscCount = stscBD.getUint32(4, Endian.big);
+      // Each stsc entry: firstChunk(4) + samplesPerChunk(4) + descIndex(4)
+      final runs = <(int, int)>[]; // (firstChunk 0-based, samplesPerChunk)
+      off = 8;
+      for (int i = 0; i < stscCount && off + 12 <= stscData.length; i++, off += 12) {
+        runs.add((stscBD.getUint32(off, Endian.big) - 1,
+                  stscBD.getUint32(off + 4, Endian.big)));
+      }
+      int sIdx = 0;
+      for (int c = 0; c < chunkOffsets.length; c++) {
+        // Find samples-per-chunk for this chunk from the run table
+        int spc = 1;
+        for (int e = runs.length - 1; e >= 0; e--) {
+          if (c >= runs[e].$1) { spc = runs[e].$2; break; }
+        }
+        int chunkOff = chunkOffsets[c];
+        for (int j = 0; j < spc && sIdx < sizes.length; j++, sIdx++) {
+          sampleOffsets.add(chunkOff);
+          chunkOff += sizes[sIdx];
+        }
+      }
+    } else {
+      // No stsc: assume one sample per chunk
+      sampleOffsets.addAll(chunkOffsets.take(sizes.length));
+    }
+
+    // Read each chapter text sample and build Chapter list
+    final chapters = <Chapter>[];
+    for (int i = 0;
+        i < sizes.length && i < sampleOffsets.length && i < sampleStarts.length;
+        i++) {
+      await raf.setPosition(sampleOffsets[i]);
+      final data = await raf.read(sizes[i]);
+      if (data.length < 3) continue;
+
+      // QuickTime text sample: 2-byte big-endian length + UTF-8 string
+      final len = (data[0] << 8) | data[1];
+      if (len == 0 || 2 + len > data.length) continue;
+
+      final titleBytes = data.sublist(2, 2 + len);
+      String title;
+      try {
+        title = utf8.decode(titleBytes);
+      } catch (_) {
+        // Fall back to UTF-16BE
+        final chars = <int>[];
+        for (int j = 0; j + 1 < titleBytes.length; j += 2) {
+          chars.add((titleBytes[j] << 8) | titleBytes[j + 1]);
+        }
+        title = String.fromCharCodes(chars);
+      }
+
+      chapters.add(Chapter(
+        title: title,
+        start: Duration(microseconds: sampleStarts[i] * 1000000 ~/ timeScale),
+      ));
+    }
+    return chapters;
   }
 
   /// Cover priority:
@@ -177,4 +509,5 @@ class ScannerService {
 
   bool _isAudio(String path) => _audioExtensions.contains(p.extension(path).toLowerCase());
   bool _isImage(String path) => _imageExtensions.contains(p.extension(path).toLowerCase());
+  bool _isDrm(String path) => _drmExtensions.contains(p.extension(path).toLowerCase());
 }

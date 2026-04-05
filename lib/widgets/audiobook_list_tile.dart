@@ -5,14 +5,12 @@ import '../models/audiobook.dart';
 class AudiobookListTile extends StatelessWidget {
   final Audiobook book;
   final VoidCallback? onTap;
-  final int? lastPlayedMs;
   final bool isActive;
 
   const AudiobookListTile({
     super.key,
     required this.book,
     this.onTap,
-    this.lastPlayedMs,
     this.isActive = false,
   });
 
@@ -73,16 +71,12 @@ class AudiobookListTile extends StatelessWidget {
                 color: theme.colorScheme.onSurface.withValues(alpha: 0.5),
               ),
             ),
-          if (lastPlayedMs != null)
-            Text(
-              _fmtDate(lastPlayedMs!),
-              style: TextStyle(
-                fontSize: 12,
-                color: theme.colorScheme.onSurface.withValues(alpha: 0.45),
-              ),
-            ),
         ],
       ),
+      trailing: book.isDrmLocked
+          ? Icon(Icons.lock_rounded,
+              size: 20, color: theme.colorScheme.onSurface.withValues(alpha: 0.5))
+          : null,
       isThreeLine: book.author != null,
     );
   }
@@ -116,17 +110,4 @@ class AudiobookListTile extends StatelessWidget {
     return '${m}m';
   }
 
-  static String _fmtDate(int epochMs) {
-    final then = DateTime.fromMillisecondsSinceEpoch(epochMs);
-    final now = DateTime.now();
-    final diff = now.difference(then);
-    if (diff.inDays == 0) return 'Today';
-    if (diff.inDays == 1) return 'Yesterday';
-    if (diff.inDays < 7) return '${diff.inDays} days ago';
-    const months = [
-      'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
-      'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'
-    ];
-    return '${months[then.month - 1]} ${then.day}';
-  }
 }

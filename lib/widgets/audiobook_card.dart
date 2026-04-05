@@ -5,14 +5,12 @@ import '../models/audiobook.dart';
 class AudiobookCard extends StatelessWidget {
   final Audiobook book;
   final VoidCallback? onTap;
-  final int? lastPlayedMs;
   final bool isActive;
 
   const AudiobookCard({
     super.key,
     required this.book,
     this.onTap,
-    this.lastPlayedMs,
     this.isActive = false,
   });
 
@@ -31,6 +29,19 @@ class AudiobookCard extends StatelessWidget {
                 fit: StackFit.expand,
                 children: [
                   _cover(theme),
+                  if (book.isDrmLocked)
+                    Positioned.fill(
+                      child: ColoredBox(
+                        color: Colors.black.withValues(alpha: 0.45),
+                        child: const Center(
+                          child: Icon(
+                            Icons.lock_rounded,
+                            size: 36,
+                            color: Colors.white,
+                          ),
+                        ),
+                      ),
+                    ),
                   if (isActive)
                     Positioned(
                       right: 6,
@@ -63,16 +74,6 @@ class AudiobookCard extends StatelessWidget {
                     maxLines: 2,
                     overflow: TextOverflow.ellipsis,
                   ),
-                  if (lastPlayedMs != null) ...[
-                    const SizedBox(height: 2),
-                    Text(
-                      _fmtDate(lastPlayedMs!),
-                      style: theme.textTheme.bodySmall?.copyWith(
-                        color: theme.colorScheme.onSurface
-                            .withValues(alpha: 0.5),
-                      ),
-                    ),
-                  ],
                 ],
               ),
             ),
@@ -113,17 +114,4 @@ class AudiobookCard extends StatelessWidget {
     );
   }
 
-  static String _fmtDate(int epochMs) {
-    final then = DateTime.fromMillisecondsSinceEpoch(epochMs);
-    final now = DateTime.now();
-    final diff = now.difference(then);
-    if (diff.inDays == 0) return 'Today';
-    if (diff.inDays == 1) return 'Yesterday';
-    if (diff.inDays < 7) return '${diff.inDays} days ago';
-    const months = [
-      'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
-      'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'
-    ];
-    return '${months[then.month - 1]} ${then.day}';
-  }
 }
