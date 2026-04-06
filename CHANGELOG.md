@@ -4,6 +4,10 @@ All notable changes to AudioVault are documented here.
 
 ## [Unreleased]
 
+---
+
+## [1.0.1] — 2026-04-06
+
 ### Added
 
 - **Google Cast support** — Cast button in the player AppBar opens a device picker to start or stop casting to nearby Google Cast devices.
