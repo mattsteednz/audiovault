@@ -101,6 +101,41 @@ class _SettingsScreenState extends State<SettingsScreen> {
     setState(() => _telemetryEnabled = value);
   }
 
+  void _showColorModeDialog() {
+    showDialog<void>(
+      context: context,
+      builder: (context) => _ColorModeDialog(
+        current: _themeMode,
+        onSelected: (value) {
+          Navigator.pop(context);
+          _setThemeMode(value);
+        },
+      ),
+    );
+  }
+
+  String get _themeModeLabel {
+    switch (_themeMode) {
+      case 'light':
+        return 'Light';
+      case 'dark':
+        return 'Dark';
+      default:
+        return 'Follow system';
+    }
+  }
+
+  IconData get _themeModeIcon {
+    switch (_themeMode) {
+      case 'light':
+        return Icons.wb_sunny_rounded;
+      case 'dark':
+        return Icons.dark_mode_rounded;
+      default:
+        return Icons.phone_android_rounded;
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
@@ -113,109 +148,143 @@ class _SettingsScreenState extends State<SettingsScreen> {
         ),
       ),
       body: ListView(
-        padding: const EdgeInsets.symmetric(vertical: 8),
         children: [
-            // ── Appearance section ───────────────────────────────────────
-            _sectionHeader('Appearance', theme),
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-              child: SegmentedButton<String>(
-                segments: const [
-                  ButtonSegment(
-                    value: 'system',
-                    label: Text('Follow system'),
-                    icon: Icon(Icons.brightness_auto_rounded),
-                  ),
-                  ButtonSegment(
-                    value: 'light',
-                    label: Text('Light'),
-                    icon: Icon(Icons.light_mode_rounded),
-                  ),
-                  ButtonSegment(
-                    value: 'dark',
-                    label: Text('Dark'),
-                    icon: Icon(Icons.dark_mode_rounded),
-                  ),
-                ],
-                selected: {_themeMode},
-                onSelectionChanged: (selection) =>
-                    _setThemeMode(selection.first),
-              ),
-            ),
-            const Divider(height: 24),
+          // ── Appearance ───────────────────────────────────────────────────
+          ListTile(
+            leading: Icon(_themeModeIcon),
+            title: const Text('Color mode'),
+            subtitle: Text(_themeModeLabel),
+            onTap: _showColorModeDialog,
+            contentPadding:
+                const EdgeInsets.symmetric(horizontal: 20, vertical: 4),
+          ),
+          const Divider(),
 
-            // ── Audiobooks section ───────────────────────────────────────
-            _sectionHeader('Audiobooks', theme),
-            SwitchListTile(
+          // ── Audiobooks ───────────────────────────────────────────────────
+          ListTile(
+            leading: const Icon(Icons.folder_rounded),
+            title: const Text('Audiobooks folder'),
+            subtitle: Text(
+              _folderPath ?? 'No folder selected',
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+            ),
+            trailing: _pickingFolder
+                ? const SizedBox(
+                    width: 24,
+                    height: 24,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
+                : null,
+            onTap: _pickingFolder ? null : _selectFolder,
+            contentPadding:
+                const EdgeInsets.symmetric(horizontal: 20, vertical: 4),
+          ),
+          ListTile(
+            leading: const Icon(Icons.auto_awesome_rounded),
+            title: const Text('Get missing covers & metadata'),
+            subtitle: const Text(
+                'Fetches covers from Open Library for books without artwork'),
+            trailing: Switch(
               value: _metadataEnrichment,
               onChanged: _setMetadataEnrichment,
-              title: const Text('Get missing covers & metadata'),
-              subtitle: const Text(
-                  'Fetches covers from Open Library for books without artwork'),
-              contentPadding:
-                  const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
             ),
-            ListTile(
-              contentPadding:
-                  const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
-              title: Text(
-                _folderPath ?? 'No folder selected',
-                style: theme.textTheme.bodySmall?.copyWith(
-                  color: theme.colorScheme.onSurface
-                      .withValues(alpha: _folderPath != null ? 0.6 : 0.4),
-                  fontFamily: 'monospace',
-                ),
-              ),
-              trailing: _pickingFolder
-                  ? const SizedBox(
-                      width: 24,
-                      height: 24,
-                      child: CircularProgressIndicator(strokeWidth: 2))
-                  : IconButton(
-                      icon: const Icon(Icons.folder_open_rounded),
-                      tooltip: 'Select audiobooks folder',
-                      onPressed: _selectFolder,
-                    ),
-              onTap: _pickingFolder ? null : _selectFolder,
-            ),
-            const Divider(height: 24),
+            onTap: () => _setMetadataEnrichment(!_metadataEnrichment),
+            contentPadding:
+                const EdgeInsets.symmetric(horizontal: 20, vertical: 4),
+          ),
+          const Divider(),
 
-            // ── Privacy section ──────────────────────────────────────────
-            _sectionHeader('Privacy', theme),
-            SwitchListTile(
+          // ── Privacy ──────────────────────────────────────────────────────
+          ListTile(
+            leading: const Icon(Icons.shield_rounded),
+            title: const Text('Analytics & crash reports'),
+            subtitle: const Text(
+                'Send anonymous usage data to help improve AudioVault'),
+            trailing: Switch(
               value: _telemetryEnabled,
               onChanged: _setTelemetry,
-              title: const Text(
-                  'Send crash reports and usage data to help improve AudioVault'),
-              contentPadding:
-                  const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
             ),
-            Padding(
-              padding:
-                  const EdgeInsets.fromLTRB(16, 0, 16, 16),
-              child: Text(
-                'Data sent to Google Firebase is anonymous and includes no '
-                'personal information such as book titles or file names.',
-                style: theme.textTheme.bodySmall?.copyWith(
-                  color:
-                      theme.colorScheme.onSurface.withValues(alpha: 0.55),
-                ),
+            onTap: () => _setTelemetry(!_telemetryEnabled),
+            contentPadding:
+                const EdgeInsets.symmetric(horizontal: 20, vertical: 4),
+          ),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(20, 0, 20, 16),
+            child: Text(
+              'Data sent to Google Firebase is anonymous and includes no '
+              'personal information such as book titles or file names.',
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: theme.colorScheme.onSurface.withValues(alpha: 0.55),
               ),
             ),
-          ],
-        ),
-      );
+          ),
+        ],
+      ),
+    );
   }
+}
 
-  Widget _sectionHeader(String title, ThemeData theme) {
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 8, 16, 4),
-      child: Text(
-        title,
-        style: theme.textTheme.labelLarge?.copyWith(
-          color: theme.colorScheme.primary,
-          fontWeight: FontWeight.w600,
-          letterSpacing: 0.8,
+class _ColorModeDialog extends StatelessWidget {
+  final String current;
+  final void Function(String) onSelected;
+
+  const _ColorModeDialog({required this.current, required this.onSelected});
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final options = [
+      (value: 'system', label: 'Follow system', icon: Icons.phone_android_rounded),
+      (value: 'light', label: 'Light', icon: Icons.wb_sunny_rounded),
+      (value: 'dark', label: 'Dark', icon: Icons.dark_mode_rounded),
+    ];
+
+    return Dialog(
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(24, 24, 24, 16),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('Color mode', style: theme.textTheme.titleLarge),
+            const SizedBox(height: 8),
+            ...options.map((opt) {
+              final selected = opt.value == current;
+              return InkWell(
+                onTap: () => onSelected(opt.value),
+                borderRadius: BorderRadius.circular(8),
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(
+                      vertical: 14, horizontal: 8),
+                  child: Row(
+                    children: [
+                      Icon(
+                        opt.icon,
+                        color: selected
+                            ? theme.colorScheme.primary
+                            : theme.colorScheme.onSurface,
+                      ),
+                      const SizedBox(width: 16),
+                      Text(
+                        opt.label,
+                        style: theme.textTheme.bodyLarge?.copyWith(
+                          color: selected
+                              ? theme.colorScheme.primary
+                              : theme.colorScheme.onSurface,
+                          fontWeight: selected ? FontWeight.w600 : null,
+                        ),
+                      ),
+                      const Spacer(),
+                      if (selected)
+                        Icon(Icons.check_rounded,
+                            color: theme.colorScheme.primary),
+                    ],
+                  ),
+                ),
+              );
+            }),
+          ],
         ),
       ),
     );
