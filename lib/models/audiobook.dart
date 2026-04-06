@@ -51,6 +51,21 @@ class Audiobook {
     this.isDrmLocked = false,
   });
 
+  /// Returns the index of the M4B embedded chapter that contains [position].
+  /// Returns 0 if [chapters] is empty.
+  int chapterIndexAt(Duration position) {
+    if (chapters.isEmpty) return 0;
+    int current = 0;
+    for (int i = 0; i < chapters.length; i++) {
+      if (position >= chapters[i].start) {
+        current = i;
+      } else {
+        break;
+      }
+    }
+    return current;
+  }
+
   Audiobook copyWith({String? coverImagePath, Uint8List? coverImageBytes}) {
     return Audiobook(
       title: title,

@@ -9,13 +9,7 @@ import 'screens/onboarding_screen.dart';
 import 'services/audio_handler.dart';
 import 'services/preferences_service.dart';
 import 'services/telemetry_service.dart';
-
-late AudioVaultHandler audioHandler;
-
-/// Notifier that drives the app-wide theme mode. Update this to change the
-/// theme without restarting the app.
-final ValueNotifier<ThemeMode> themeModeNotifier =
-    ValueNotifier<ThemeMode>(ThemeMode.system);
+import 'widgets/audio_handler_scope.dart';
 
 ThemeMode _themeModeFromString(String? value) {
   switch (value) {
@@ -32,7 +26,7 @@ void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
   // Initialise audio service.
-  audioHandler = await AudioService.init<AudioVaultHandler>(
+  final audioHandler = await AudioService.init<AudioVaultHandler>(
     builder: AudioVaultHandler.new,
     config: const AudioServiceConfig(
       androidNotificationChannelId: 'com.mattsteed.audiovault.audio',
@@ -73,14 +67,25 @@ void main() async {
   }
 
   // Read persisted theme mode before first frame so there is no flash.
+  final themeModeNotifier = ValueNotifier<ThemeMode>(ThemeMode.system);
   final storedTheme = await PreferencesService().getThemeMode();
   themeModeNotifier.value = _themeModeFromString(storedTheme);
 
-  runApp(const AudioVaultApp());
+  runApp(AudioVaultApp(
+    audioHandler: audioHandler,
+    themeModeNotifier: themeModeNotifier,
+  ));
 }
 
 class AudioVaultApp extends StatefulWidget {
-  const AudioVaultApp({super.key});
+  final AudioVaultHandler audioHandler;
+  final ValueNotifier<ThemeMode> themeModeNotifier;
+
+  const AudioVaultApp({
+    super.key,
+    required this.audioHandler,
+    required this.themeModeNotifier,
+  });
 
   @override
   State<AudioVaultApp> createState() => _AudioVaultAppState();
@@ -105,18 +110,22 @@ class _AudioVaultAppState extends State<AudioVaultApp> {
 
   @override
   Widget build(BuildContext context) {
-    return ValueListenableBuilder<ThemeMode>(
-      valueListenable: themeModeNotifier,
-      builder: (context, themeMode, _) {
-        return MaterialApp(
-          title: 'AudioVault',
-          debugShowCheckedModeBanner: false,
-          theme: _lightTheme,
-          darkTheme: _darkTheme,
-          themeMode: themeMode,
-          home: const _AppEntryPoint(),
-        );
-      },
+    return AudioHandlerScope(
+      audioHandler: widget.audioHandler,
+      themeModeNotifier: widget.themeModeNotifier,
+      child: ValueListenableBuilder<ThemeMode>(
+        valueListenable: widget.themeModeNotifier,
+        builder: (context, themeMode, _) {
+          return MaterialApp(
+            title: 'AudioVault',
+            debugShowCheckedModeBanner: false,
+            theme: _lightTheme,
+            darkTheme: _darkTheme,
+            themeMode: themeMode,
+            home: const _AppEntryPoint(),
+          );
+        },
+      ),
     );
   }
 }

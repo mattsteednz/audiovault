@@ -1,6 +1,6 @@
-import 'dart:io';
 import 'package:flutter/material.dart';
 import '../models/audiobook.dart';
+import 'book_cover.dart';
 
 class AudiobookCard extends StatelessWidget {
   final Audiobook book;
@@ -28,7 +28,7 @@ class AudiobookCard extends StatelessWidget {
               child: Stack(
                 fit: StackFit.expand,
                 children: [
-                  _cover(theme),
+                  BookCover(book: book, iconSize: 52),
                   if (book.isDrmLocked)
                     Positioned.fill(
                       child: ColoredBox(
@@ -78,37 +78,6 @@ class AudiobookCard extends StatelessWidget {
               ),
             ),
           ],
-        ),
-      ),
-    );
-  }
-
-  Widget _cover(ThemeData theme) {
-    if (book.coverImageBytes != null) {
-      return Image.memory(
-        book.coverImageBytes!,
-        fit: BoxFit.cover,
-        errorBuilder: (_, __, ___) => _placeholder(theme),
-      );
-    }
-    if (book.coverImagePath != null) {
-      return Image.file(
-        File(book.coverImagePath!),
-        fit: BoxFit.cover,
-        errorBuilder: (_, __, ___) => _placeholder(theme),
-      );
-    }
-    return _placeholder(theme);
-  }
-
-  Widget _placeholder(ThemeData theme) {
-    return ColoredBox(
-      color: theme.colorScheme.surfaceContainerHighest,
-      child: Center(
-        child: Icon(
-          Icons.menu_book_rounded,
-          size: 52,
-          color: theme.colorScheme.onSurfaceVariant,
         ),
       ),
     );

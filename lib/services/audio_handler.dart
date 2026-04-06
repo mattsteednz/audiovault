@@ -67,11 +67,17 @@ class AudioVaultHandler extends BaseAudioHandler {
 
     final sources =
         book.audioFiles.map((p) => AudioSource.uri(Uri.file(p))).toList();
-    await _player.setAudioSource(
-      ConcatenatingAudioSource(children: sources),
-      initialIndex: saved?.chapterIndex ?? 0,
-      initialPosition: saved?.position ?? Duration.zero,
-    );
+    try {
+      await _player.setAudioSource(
+        ConcatenatingAudioSource(children: sources),
+        initialIndex: saved?.chapterIndex ?? 0,
+        initialPosition: saved?.position ?? Duration.zero,
+      );
+    } catch (e) {
+      _book = null;
+      _artUri = null;
+      rethrow;
+    }
     _updateMediaItem();
   }
 
@@ -112,6 +118,16 @@ class AudioVaultHandler extends BaseAudioHandler {
 
   @override
   Future<void> skipToNext() async {
+    final chapters = _book?.chapters;
+    if (chapters != null && chapters.isNotEmpty) {
+      // M4B: seek to start of next embedded chapter
+      final idx = _book!.chapterIndexAt(_player.position);
+      if (idx < chapters.length - 1) {
+        await _player.seek(chapters[idx + 1].start);
+      }
+      return;
+    }
+    // Multi-file: seek to next file
     final idx = _player.currentIndex ?? 0;
     final len = _player.sequence?.length ?? 1;
     if (idx < len - 1) await _player.seekToNext();
@@ -119,6 +135,21 @@ class AudioVaultHandler extends BaseAudioHandler {
 
   @override
   Future<void> skipToPrevious() async {
+    final chapters = _book?.chapters;
+    if (chapters != null && chapters.isNotEmpty) {
+      // M4B: if more than 5 s into chapter, restart it; otherwise go to previous
+      final idx = _book!.chapterIndexAt(_player.position);
+      final chapterStart = chapters[idx].start;
+      if (_player.position - chapterStart > const Duration(seconds: 5)) {
+        await _player.seek(chapterStart);
+      } else if (idx > 0) {
+        await _player.seek(chapters[idx - 1].start);
+      } else {
+        await _player.seek(Duration.zero);
+      }
+      return;
+    }
+    // Multi-file: restart file or go to previous
     if (_player.position > const Duration(seconds: 5)) {
       await _player.seek(Duration.zero);
     } else {
@@ -149,6 +180,7 @@ class AudioVaultHandler extends BaseAudioHandler {
 
   @override
   Future<void> stop() async {
+    await _savePosition();
     await _player.stop();
     return super.stop();
   }

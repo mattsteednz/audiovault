@@ -1,11 +1,12 @@
 import 'dart:async';
-import 'dart:io';
 import 'package:audio_service/audio_service.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_chrome_cast/flutter_chrome_cast.dart';
 import 'package:path/path.dart' as p;
-import '../main.dart';
 import '../models/audiobook.dart';
+import '../services/audio_handler.dart';
+import '../widgets/audio_handler_scope.dart';
+import '../widgets/book_cover.dart';
 
 // ── Sleep timer options ───────────────────────────────────────────────────────
 
@@ -50,26 +51,33 @@ class _PlayerScreenState extends State<PlayerScreen> {
   int _lastChapterIndex = 0;
   StreamSubscription<int?>? _chapterSub;
 
+  late final AudioVaultHandler _audioHandler;
+  bool _didInit = false;
+
   @override
-  void initState() {
-    super.initState();
-    _loadBook();
-    _chapterSub = audioHandler.player.currentIndexStream.listen((idx) {
-      if (idx != null && idx != _lastChapterIndex) {
-        if (_stopAtChapterEnd) {
-          audioHandler.pause();
-          _cancelTimer();
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (!_didInit) {
+      _didInit = true;
+      _audioHandler = AudioHandlerScope.of(context).audioHandler;
+      _loadBook();
+      _chapterSub = _audioHandler.player.currentIndexStream.listen((idx) {
+        if (idx != null && idx != _lastChapterIndex) {
+          if (_stopAtChapterEnd) {
+            _audioHandler.pause();
+            _cancelTimer();
+          }
+          setState(() => _lastChapterIndex = idx);
         }
-        setState(() => _lastChapterIndex = idx);
-      }
-    });
+      });
+    }
   }
 
   Future<void> _loadBook() async {
-    final isNew = audioHandler.currentBook?.path != widget.book.path;
+    final isNew = _audioHandler.currentBook?.path != widget.book.path;
     if (isNew) setState(() => _lastChapterIndex = 0);
-    await audioHandler.loadBook(widget.book);
-    if (isNew) audioHandler.play();
+    await _audioHandler.loadBook(widget.book);
+    if (isNew) _audioHandler.play();
   }
 
   @override
@@ -91,7 +99,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
     setState(() => _sleepRemaining = opt.duration!);
     _sleepTimer = Timer.periodic(const Duration(seconds: 1), (_) {
       if (_sleepRemaining <= Duration.zero) {
-        audioHandler.pause();
+        _audioHandler.pause();
         _cancelTimer();
       } else {
         setState(() => _sleepRemaining -= const Duration(seconds: 1));
@@ -177,14 +185,6 @@ class _PlayerScreenState extends State<PlayerScreen> {
 
   // ── Helpers ─────────────────────────────────────────────────────────────────
 
-  String _fmt(Duration d) {
-    final h = d.inHours;
-    final m = d.inMinutes.remainder(60).toString().padLeft(2, '0');
-    final s = d.inSeconds.remainder(60).toString().padLeft(2, '0');
-    return h > 0 ? '$h:$m:$s' : '$m:$s';
-  }
-
-  /// Formats a duration as m:ss (or h:mm:ss if >= 1 hour).
   String _fmtHM(Duration d) {
     if (d < Duration.zero) d = Duration.zero;
     final h = d.inHours;
@@ -195,27 +195,11 @@ class _PlayerScreenState extends State<PlayerScreen> {
 
   String get _timerLabel {
     if (_stopAtChapterEnd) return 'End of ch.';
-    if (_sleepTimer != null) return _fmt(_sleepRemaining);
+    if (_sleepTimer != null) return _fmtHM(_sleepRemaining);
     return 'Off';
   }
 
   bool get _timerActive => _sleepTimer != null || _stopAtChapterEnd;
-
-  // ── Chapter helpers ──────────────────────────────────────────────────────────
-
-  /// For M4B books with embedded chapters, returns the index of the chapter
-  /// that contains [position].
-  int _m4bChapterAt(Duration position, List<Chapter> chapters) {
-    int current = 0;
-    for (int i = 0; i < chapters.length; i++) {
-      if (position >= chapters[i].start) {
-        current = i;
-      } else {
-        break;
-      }
-    }
-    return current;
-  }
 
   Future<void> _showChapterList(BuildContext context) async {
     final book = widget.book;
@@ -255,25 +239,25 @@ class _PlayerScreenState extends State<PlayerScreen> {
                 Expanded(
                   child: isM4b
                       ? StreamBuilder<Duration>(
-                          stream: audioHandler.player.positionStream,
+                          stream: _audioHandler.player.positionStream,
                           builder: (ctx, snap) {
                             final pos = snap.data ?? Duration.zero;
                             final currentIdx =
-                                _m4bChapterAt(pos, book.chapters);
+                                book.chapterIndexAt(pos);
                             return _chapterListView(
                               scrollCtrl: scrollCtrl,
                               count: chapCount,
                               currentIndex: currentIdx,
                               title: (i) => book.chapters[i].title,
                               onTap: (i) {
-                                audioHandler.seek(book.chapters[i].start);
+                                _audioHandler.seek(book.chapters[i].start);
                                 Navigator.of(ctx).pop();
                               },
                             );
                           },
                         )
                       : StreamBuilder<int?>(
-                          stream: audioHandler.player.currentIndexStream,
+                          stream: _audioHandler.player.currentIndexStream,
                           builder: (ctx, snap) {
                             final currentIdx = snap.data ?? 0;
                             return _chapterListView(
@@ -283,7 +267,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
                               title: (i) => p.basenameWithoutExtension(
                                   book.audioFiles[i]),
                               onTap: (i) {
-                                audioHandler.player
+                                _audioHandler.player
                                     .seek(Duration.zero, index: i);
                                 Navigator.of(ctx).pop();
                               },
@@ -381,7 +365,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
                     aspectRatio: 1,
                     child: ClipRRect(
                       borderRadius: BorderRadius.circular(16),
-                      child: _coverWidget(theme),
+                      child: BookCover(book: widget.book, iconSize: 80),
                     ),
                   ),
                 ),
@@ -405,28 +389,6 @@ class _PlayerScreenState extends State<PlayerScreen> {
       ),
     );
   }
-
-  // ── Cover ──────────────────────────────────────────────────────────────────
-
-  Widget _coverWidget(ThemeData theme) {
-    if (widget.book.coverImageBytes != null) {
-      return Image.memory(widget.book.coverImageBytes!, fit: BoxFit.cover,
-          errorBuilder: (_, __, ___) => _coverPlaceholder(theme));
-    }
-    if (widget.book.coverImagePath != null) {
-      return Image.file(File(widget.book.coverImagePath!), fit: BoxFit.cover,
-          errorBuilder: (_, __, ___) => _coverPlaceholder(theme));
-    }
-    return _coverPlaceholder(theme);
-  }
-
-  Widget _coverPlaceholder(ThemeData theme) => ColoredBox(
-        color: theme.colorScheme.surfaceContainerHighest,
-        child: Center(
-          child: Icon(Icons.menu_book_rounded, size: 80,
-              color: theme.colorScheme.onSurfaceVariant),
-        ),
-      );
 
   // ── Info section ───────────────────────────────────────────────────────────
 
@@ -476,17 +438,17 @@ class _PlayerScreenState extends State<PlayerScreen> {
         if (isM4b)
           // For M4B: derive current chapter from playback position
           StreamBuilder<Duration>(
-            stream: audioHandler.player.positionStream,
+            stream: _audioHandler.player.positionStream,
             builder: (_, snap) {
               final pos = snap.data ?? Duration.zero;
-              final idx = _m4bChapterAt(pos, book.chapters);
+              final idx = book.chapterIndexAt(pos);
               return chapterLabel(idx);
             },
           )
         else
           // For multi-file: use just_audio's current index
           StreamBuilder<int?>(
-            stream: audioHandler.player.currentIndexStream,
+            stream: _audioHandler.player.currentIndexStream,
             builder: (_, snap) => chapterLabel(snap.data ?? 0),
           ),
       ],
@@ -498,11 +460,11 @@ class _PlayerScreenState extends State<PlayerScreen> {
   Widget _progressSection(Audiobook book, ThemeData theme) {
     final isM4b = book.chapters.isNotEmpty;
     return StreamBuilder<Duration?>(
-      stream: audioHandler.player.durationStream,
+      stream: _audioHandler.player.durationStream,
       builder: (_, durSnap) {
         final dur = durSnap.data ?? Duration.zero;
         return StreamBuilder<Duration>(
-          stream: audioHandler.player.positionStream,
+          stream: _audioHandler.player.positionStream,
           builder: (_, posSnap) {
             final pos = posSnap.data ?? Duration.zero;
             final displayed = _dragging ? _dragPosition : pos;
@@ -519,7 +481,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
             final Duration chapterElapsed;
             final Duration chapterRemaining;
             if (isM4b) {
-              final chIdx = _m4bChapterAt(displayedSec, book.chapters);
+              final chIdx = book.chapterIndexAt(displayedSec);
               final chStart = book.chapters[chIdx].start;
               final chEnd = (chIdx + 1 < book.chapters.length)
                   ? book.chapters[chIdx + 1].start
@@ -547,7 +509,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
                       setState(() => _dragPosition = Duration(milliseconds: v.toInt())),
                   onChangeEnd: (v) {
                     setState(() => _dragging = false);
-                    audioHandler.seek(Duration(milliseconds: v.toInt()));
+                    _audioHandler.seek(Duration(milliseconds: v.toInt()));
                   },
                 ),
               ),
@@ -574,7 +536,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
 
   Widget _controlsSection(ThemeData theme) {
     return StreamBuilder<PlaybackState>(
-      stream: audioHandler.playbackState,
+      stream: _audioHandler.playbackState,
       builder: (_, snap) {
         final state = snap.data;
         final playing = state?.playing ?? false;
@@ -584,11 +546,11 @@ class _PlayerScreenState extends State<PlayerScreen> {
         return Row(
           mainAxisAlignment: MainAxisAlignment.spaceEvenly,
           children: [
-            _iconBtn(Icons.skip_previous_rounded, 34, audioHandler.skipToPrevious),
-            _iconBtn(Icons.replay_30_rounded, 34, audioHandler.rewind),
+            _iconBtn(Icons.skip_previous_rounded, 34, _audioHandler.skipToPrevious),
+            _iconBtn(Icons.replay_30_rounded, 34, _audioHandler.rewind),
             // Central play/pause button
             GestureDetector(
-              onTap: playing ? audioHandler.pause : audioHandler.play,
+              onTap: playing ? _audioHandler.pause : _audioHandler.play,
               child: Container(
                 width: 68,
                 height: 68,
@@ -611,8 +573,8 @@ class _PlayerScreenState extends State<PlayerScreen> {
                 ),
               ),
             ),
-            _iconBtn(Icons.forward_30_rounded, 34, audioHandler.fastForward),
-            _iconBtn(Icons.skip_next_rounded, 34, audioHandler.skipToNext),
+            _iconBtn(Icons.forward_30_rounded, 34, _audioHandler.fastForward),
+            _iconBtn(Icons.skip_next_rounded, 34, _audioHandler.skipToNext),
           ],
         );
       },
@@ -636,7 +598,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
           tooltip: 'Playback speed',
           onSelected: (s) {
             setState(() => _speed = s);
-            audioHandler.setSpeed(s);
+            _audioHandler.setSpeed(s);
           },
           itemBuilder: (_) => _speedOpts
               .map((s) => PopupMenuItem(

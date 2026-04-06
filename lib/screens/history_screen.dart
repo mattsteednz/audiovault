@@ -1,7 +1,7 @@
-import 'dart:io';
 import 'package:flutter/material.dart';
 import '../models/audiobook.dart';
 import '../services/position_service.dart';
+import '../widgets/book_cover.dart';
 import 'player_screen.dart';
 
 class HistoryScreen extends StatefulWidget {
@@ -78,7 +78,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
         child: SizedBox(
           width: 52,
           height: 52,
-          child: _cover(book, theme),
+          child: BookCover(book: book, iconSize: 26),
         ),
       ),
       title: Text(
@@ -125,24 +125,6 @@ class _HistoryScreenState extends State<HistoryScreen> {
       ),
     );
   }
-
-  Widget _cover(Audiobook book, ThemeData theme) {
-    if (book.coverImageBytes != null) {
-      return Image.memory(book.coverImageBytes!, fit: BoxFit.cover,
-          errorBuilder: (_, __, ___) => _placeholder(theme));
-    }
-    if (book.coverImagePath != null) {
-      return Image.file(File(book.coverImagePath!), fit: BoxFit.cover,
-          errorBuilder: (_, __, ___) => _placeholder(theme));
-    }
-    return _placeholder(theme);
-  }
-
-  Widget _placeholder(ThemeData theme) => ColoredBox(
-        color: theme.colorScheme.surfaceContainerHighest,
-        child: Icon(Icons.menu_book_rounded,
-            size: 26, color: theme.colorScheme.onSurfaceVariant),
-      );
 
   String _relativeDate(int epochMs) {
     final then = DateTime.fromMillisecondsSinceEpoch(epochMs);

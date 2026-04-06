@@ -1,15 +1,16 @@
 import 'dart:async';
-import 'dart:io';
 import 'package:audio_service/audio_service.dart';
 import 'package:flutter/material.dart';
-import '../main.dart';
 import '../models/audiobook.dart';
+import '../services/audio_handler.dart';
 import '../services/enrichment_service.dart';
 import '../services/position_service.dart';
 import '../services/preferences_service.dart';
 import '../services/scanner_service.dart';
+import '../widgets/audio_handler_scope.dart';
 import '../widgets/audiobook_card.dart';
 import '../widgets/audiobook_list_tile.dart';
+import '../widgets/book_cover.dart';
 import 'player_screen.dart';
 import 'settings_screen.dart';
 
@@ -25,7 +26,6 @@ class LibraryScreen extends StatefulWidget {
 class _LibraryScreenState extends State<LibraryScreen> {
   List<Audiobook>? _books;       // sorted display order
   List<Audiobook>? _rawBooks;    // unsorted, straight from scanner
-  Map<String, int> _lastPlayedMs = {}; // bookPath -> epochMs
   String? _error;
   bool _scanning = false;
   _ViewMode _viewMode = _ViewMode.grid;
@@ -36,20 +36,27 @@ class _LibraryScreenState extends State<LibraryScreen> {
   StreamSubscription<PlaybackState>? _playbackSub;
   StreamSubscription<({String bookPath, String coverPath})>? _enrichSub;
 
+  late final AudioVaultHandler _audioHandler;
+  bool _didInit = false;
+
   @override
-  void initState() {
-    super.initState();
-    _scan();
-    _enrichSub = EnrichmentService().onCoverFetched.listen(_onCoverFetched);
-    _playbackSub = audioHandler.playbackState.listen((state) {
-      final newPath = audioHandler.currentBook?.path;
-      if (newPath != _activePath || state.playing != _isPlaying) {
-        setState(() {
-          _activePath = newPath;
-          _isPlaying = state.playing;
-        });
-      }
-    });
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (!_didInit) {
+      _didInit = true;
+      _audioHandler = AudioHandlerScope.of(context).audioHandler;
+      _scan();
+      _enrichSub = EnrichmentService().onCoverFetched.listen(_onCoverFetched);
+      _playbackSub = _audioHandler.playbackState.listen((state) {
+        final newPath = _audioHandler.currentBook?.path;
+        if (newPath != _activePath || state.playing != _isPlaying) {
+          setState(() {
+            _activePath = newPath;
+            _isPlaying = state.playing;
+          });
+        }
+      });
+    }
   }
 
   @override
@@ -100,11 +107,11 @@ class _LibraryScreenState extends State<LibraryScreen> {
 
       // Restore the last-played book into the handler so the mini player
       // appears immediately on launch (without auto-playing).
-      if (audioHandler.currentBook == null) {
+      if (_audioHandler.currentBook == null) {
         final lastPath = await PositionService().getLastPlayedBookPath();
         if (lastPath != null) {
           final book = books.where((b) => b.path == lastPath).firstOrNull;
-          if (book != null) await audioHandler.loadBook(book);
+          if (book != null) await _audioHandler.loadBook(book);
         }
       }
     } catch (e) {
@@ -135,7 +142,6 @@ class _LibraryScreenState extends State<LibraryScreen> {
           a.title.toLowerCase().compareTo(b.title.toLowerCase()));
 
     setState(() {
-      _lastPlayedMs = played;
       _books = [...withHistory, ...withoutHistory];
     });
   }
@@ -313,11 +319,12 @@ class _MiniPlayer extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final ah = AudioHandlerScope.of(context).audioHandler;
     return StreamBuilder<PlaybackState>(
-      stream: audioHandler.playbackState,
+      stream: ah.playbackState,
       builder: (context, snap) {
         final state = snap.data;
-        final book = audioHandler.currentBook;
+        final book = ah.currentBook;
         if (book == null ||
             state == null ||
             state.processingState == AudioProcessingState.idle) {
@@ -332,11 +339,11 @@ class _MiniPlayer extends StatelessWidget {
           children: [
             // Thin progress bar
             StreamBuilder<Duration>(
-              stream: audioHandler.player.positionStream,
+              stream: ah.player.positionStream,
               builder: (_, posSnap) {
                 final pos =
                     posSnap.data?.inMilliseconds.toDouble() ?? 0;
-                final dur = audioHandler.player.duration
+                final dur = ah.player.duration
                         ?.inMilliseconds
                         .toDouble() ??
                     0;
@@ -368,7 +375,7 @@ class _MiniPlayer extends StatelessWidget {
                         child: SizedBox(
                           width: 48,
                           height: 48,
-                          child: _cover(book, theme),
+                          child: BookCover(book: book, iconSize: 28),
                         ),
                       ),
                       const SizedBox(width: 12),
@@ -386,11 +393,10 @@ class _MiniPlayer extends StatelessWidget {
                               overflow: TextOverflow.ellipsis,
                             ),
                             StreamBuilder<Duration>(
-                              stream: audioHandler
-                                  .player.positionStream,
+                              stream: ah.player.positionStream,
                               builder: (_, posSnap) {
                                 final remaining =
-                                    _remaining(book, posSnap.data);
+                                    _remaining(ah, book, posSnap.data);
                                 if (remaining == null) {
                                   return const SizedBox.shrink();
                                 }
@@ -412,8 +418,8 @@ class _MiniPlayer extends StatelessWidget {
                             ? Icons.pause_rounded
                             : Icons.play_arrow_rounded),
                         onPressed: playing
-                            ? audioHandler.pause
-                            : audioHandler.play,
+                            ? ah.pause
+                            : ah.play,
                       ),
                     ],
                   ),
@@ -427,10 +433,11 @@ class _MiniPlayer extends StatelessWidget {
     );
   }
 
-  Duration? _remaining(Audiobook book, Duration? chapterPos) {
+  Duration? _remaining(
+      AudioVaultHandler ah, Audiobook book, Duration? chapterPos) {
     final totalMs = book.duration?.inMilliseconds;
     if (totalMs == null || totalMs == 0) return null;
-    final idx = audioHandler.player.currentIndex ?? 0;
+    final idx = ah.player.currentIndex ?? 0;
     int offsetMs = 0;
     for (int i = 0; i < idx && i < book.chapterDurations.length; i++) {
       offsetMs += book.chapterDurations[i].inMilliseconds;
@@ -446,22 +453,4 @@ class _MiniPlayer extends StatelessWidget {
     if (h > 0) return '${h}h ${m}m left';
     return '${m}m left';
   }
-
-  Widget _cover(Audiobook book, ThemeData theme) {
-    if (book.coverImageBytes != null) {
-      return Image.memory(book.coverImageBytes!, fit: BoxFit.cover,
-          errorBuilder: (_, __, ___) => _placeholder(theme));
-    }
-    if (book.coverImagePath != null) {
-      return Image.file(File(book.coverImagePath!), fit: BoxFit.cover,
-          errorBuilder: (_, __, ___) => _placeholder(theme));
-    }
-    return _placeholder(theme);
-  }
-
-  Widget _placeholder(ThemeData theme) => ColoredBox(
-        color: theme.colorScheme.surfaceContainerHighest,
-        child: Icon(Icons.menu_book_rounded,
-            size: 28, color: theme.colorScheme.onSurfaceVariant),
-      );
 }

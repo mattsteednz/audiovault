@@ -2,8 +2,8 @@ import 'dart:io';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:permission_handler/permission_handler.dart';
-import '../main.dart';
 import '../services/enrichment_service.dart';
+import '../widgets/audio_handler_scope.dart';
 import '../services/preferences_service.dart';
 import '../services/telemetry_service.dart';
 
@@ -84,7 +84,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
       default:
         themeMode = ThemeMode.system;
     }
-    themeModeNotifier.value = themeMode;
+    AudioHandlerScope.of(context).themeModeNotifier.value = themeMode;
     setState(() => _themeMode = value);
   }
 
@@ -105,18 +105,16 @@ class _SettingsScreenState extends State<SettingsScreen> {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
 
-    return PopScope(
-      onPopInvokedWithResult: (_, __) {},
-      child: Scaffold(
-        appBar: AppBar(
-          title: const Text('Settings'),
-          leading: BackButton(
-            onPressed: () => Navigator.pop(context, _folderChanged),
-          ),
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('Settings'),
+        leading: BackButton(
+          onPressed: () => Navigator.pop(context, _folderChanged),
         ),
-        body: ListView(
-          padding: const EdgeInsets.symmetric(vertical: 8),
-          children: [
+      ),
+      body: ListView(
+        padding: const EdgeInsets.symmetric(vertical: 8),
+        children: [
             // ── Appearance section ───────────────────────────────────────
             _sectionHeader('Appearance', theme),
             Padding(
@@ -206,8 +204,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
             ),
           ],
         ),
-      ),
-    );
+      );
   }
 
   Widget _sectionHeader(String title, ThemeData theme) {

@@ -1,6 +1,6 @@
-import 'dart:io';
 import 'package:flutter/material.dart';
 import '../models/audiobook.dart';
+import 'book_cover.dart';
 
 class AudiobookListTile extends StatelessWidget {
   final Audiobook book;
@@ -24,7 +24,7 @@ class AudiobookListTile extends StatelessWidget {
         children: [
           ClipRRect(
             borderRadius: BorderRadius.circular(6),
-            child: SizedBox(width: 56, height: 56, child: _cover(theme)),
+            child: SizedBox(width: 56, height: 56, child: BookCover(book: book, iconSize: 28)),
           ),
           if (isActive)
             Positioned(
@@ -78,28 +78,6 @@ class AudiobookListTile extends StatelessWidget {
               size: 20, color: theme.colorScheme.onSurface.withValues(alpha: 0.5))
           : null,
       isThreeLine: book.author != null,
-    );
-  }
-
-  Widget _cover(ThemeData theme) {
-    if (book.coverImageBytes != null) {
-      return Image.memory(book.coverImageBytes!, fit: BoxFit.cover,
-          errorBuilder: (_, __, ___) => _placeholder(theme));
-    }
-    if (book.coverImagePath != null) {
-      return Image.file(File(book.coverImagePath!), fit: BoxFit.cover,
-          errorBuilder: (_, __, ___) => _placeholder(theme));
-    }
-    return _placeholder(theme);
-  }
-
-  Widget _placeholder(ThemeData theme) {
-    return ColoredBox(
-      color: theme.colorScheme.surfaceContainerHighest,
-      child: Center(
-        child: Icon(Icons.menu_book_rounded, size: 28,
-            color: theme.colorScheme.onSurfaceVariant),
-      ),
     );
   }
 
