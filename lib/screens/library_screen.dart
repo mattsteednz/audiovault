@@ -11,6 +11,7 @@ import '../widgets/audio_handler_scope.dart';
 import '../widgets/audiobook_card.dart';
 import '../widgets/audiobook_list_tile.dart';
 import '../widgets/book_cover.dart';
+import 'history_screen.dart';
 import 'player_screen.dart';
 import 'settings_screen.dart';
 
@@ -196,6 +197,20 @@ class _LibraryScreenState extends State<LibraryScreen> {
         title: const Text('My Library'),
         actions: [
           IconButton(
+            icon: const Icon(Icons.history_rounded),
+            onPressed: () {
+              final books = _rawBooks;
+              if (books != null) {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                      builder: (_) => HistoryScreen(books: books)),
+                );
+              }
+            },
+            tooltip: 'History',
+          ),
+          IconButton(
             icon: Icon(_viewMode == _ViewMode.grid
                 ? Icons.view_list_rounded
                 : Icons.grid_view_rounded),
@@ -337,18 +352,31 @@ class _MiniPlayer extends StatelessWidget {
         return Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            // Thin progress bar
+            // Thin progress bar (global book progress)
             StreamBuilder<Duration>(
               stream: ah.player.positionStream,
               builder: (_, posSnap) {
-                final pos =
-                    posSnap.data?.inMilliseconds.toDouble() ?? 0;
-                final dur = ah.player.duration
-                        ?.inMilliseconds
-                        .toDouble() ??
-                    0;
+                final totalMs =
+                    book.duration?.inMilliseconds.toDouble() ?? 0;
+                if (totalMs <= 0) {
+                  return LinearProgressIndicator(
+                    value: 0,
+                    minHeight: 2,
+                    backgroundColor:
+                        theme.colorScheme.surfaceContainerHighest,
+                  );
+                }
+                final idx = ah.player.currentIndex ?? 0;
+                int offsetMs = 0;
+                for (int i = 0;
+                    i < idx && i < book.chapterDurations.length;
+                    i++) {
+                  offsetMs += book.chapterDurations[i].inMilliseconds;
+                }
+                final globalMs = offsetMs +
+                    (posSnap.data?.inMilliseconds ?? 0);
                 return LinearProgressIndicator(
-                  value: dur > 0 ? (pos / dur).clamp(0.0, 1.0) : 0,
+                  value: (globalMs / totalMs).clamp(0.0, 1.0),
                   minHeight: 2,
                   backgroundColor:
                       theme.colorScheme.surfaceContainerHighest,

@@ -81,7 +81,7 @@ class PositionService {
     return rows.first['book_path'] as String?;
   }
 
-  Future<List<_BookProgress>> getAllPositions() async {
+  Future<List<BookProgress>> getAllPositions() async {
     final db = await _database;
     final rows =
         await db.query('positions', orderBy: 'updated_at DESC');
@@ -96,12 +96,9 @@ class PositionService {
   }
 }
 
-typedef _BookProgress = ({
+typedef BookProgress = ({
   String bookPath,
   int globalPositionMs,
   int totalDurationMs,
   int updatedAt,
 });
-
-// Re-export so callers can reference the type.
-typedef BookProgress = _BookProgress;

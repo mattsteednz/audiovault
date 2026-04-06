@@ -113,6 +113,12 @@ class EnrichmentService {
   /// Stop any in-progress enrichment queue.
   void cancel() => _cancelled = true;
 
+  /// Release resources. Only needed if the singleton is torn down (e.g. tests).
+  void dispose() {
+    cancel();
+    _controller.close();
+  }
+
   Future<void> _enrichBook(Audiobook book) async {
     await _recordAttempt(book.path);
     _log('Fetching cover for "${book.title}"');

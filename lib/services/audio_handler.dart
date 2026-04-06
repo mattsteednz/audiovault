@@ -41,6 +41,13 @@ class AudioVaultHandler extends BaseAudioHandler {
         _savePosition(); // immediate save on pause
       }
     });
+
+    // Handle playback completion (end of last file / M4B).
+    _player.processingStateStream.listen((state) {
+      if (state == ProcessingState.completed) {
+        _savePosition();
+      }
+    });
   }
 
   // ── Loading ────────────────────────────────────────────────────────────────
@@ -227,7 +234,9 @@ class AudioVaultHandler extends BaseAudioHandler {
       artUri: _artUri,
       extras: {
         'chapterIndex': idx,
-        'chapterCount': _book!.audioFiles.length,
+        'chapterCount': _book!.chapters.isNotEmpty
+            ? _book!.chapters.length
+            : _book!.audioFiles.length,
       },
     ));
   }

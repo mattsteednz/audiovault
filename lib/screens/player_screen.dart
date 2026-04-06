@@ -98,11 +98,12 @@ class _PlayerScreenState extends State<PlayerScreen> {
     if (opt.duration == null) return; // "Off"
     setState(() => _sleepRemaining = opt.duration!);
     _sleepTimer = Timer.periodic(const Duration(seconds: 1), (_) {
-      if (_sleepRemaining <= Duration.zero) {
+      final next = _sleepRemaining - const Duration(seconds: 1);
+      if (next <= Duration.zero) {
         _audioHandler.pause();
         _cancelTimer();
       } else {
-        setState(() => _sleepRemaining -= const Duration(seconds: 1));
+        setState(() => _sleepRemaining = next);
       }
     });
   }
