@@ -26,8 +26,14 @@ class ScannerService {
     }
 
     final entries = await dir.list().toList();
-    final subdirs = entries.whereType<Directory>().toList();
-    final rootFiles = entries.whereType<File>().toList();
+    final subdirs = entries
+        .whereType<Directory>()
+        .where((d) => !p.basename(d.path).startsWith('.'))
+        .toList();
+    final rootFiles = entries
+        .whereType<File>()
+        .where((f) => !p.basename(f.path).startsWith('.'))
+        .toList();
 
     _log('Entries   : ${entries.length} total '
         '(${subdirs.length} dirs, ${rootFiles.length} files)');
@@ -56,7 +62,10 @@ class ScannerService {
       return null;
     }
 
-    final allFiles = entries.whereType<File>().toList();
+    final allFiles = entries
+        .whereType<File>()
+        .where((f) => !p.basename(f.path).startsWith('.'))
+        .toList();
     final audioFiles = allFiles
         .where((f) => _isAudio(f.path))
         .map((f) => f.path)

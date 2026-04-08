@@ -1,20 +1,21 @@
 {
   "project_info": {
-    "project_number": "000000000000",
+    "project_number": "75029388438",
     "project_id": "audiovault-7c0de",
-    "storage_bucket": "audiovault-7c0de.appspot.com"
+    "storage_bucket": "audiovault-7c0de.firebasestorage.app"
   },
   "client": [
     {
       "client_info": {
-        "mobilesdk_app_id": "1:000000000000:android:0000000000000000000000",
+        "mobilesdk_app_id": "1:75029388438:android:8df208b63d417c7664b6b7",
         "android_client_info": {
           "package_name": "com.mattsteed.audiovault"
         }
       },
+      "oauth_client": [],
       "api_key": [
         {
-          "current_key": "REPLACE_WITH_REAL_API_KEY"
+          "current_key": "AIzaSyAEQ8EXJHt9of2hsVejWxYWxvbGsw25kRg"
         }
       ],
       "services": {

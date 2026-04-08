@@ -6,6 +6,7 @@ import '../services/enrichment_service.dart';
 import '../widgets/audio_handler_scope.dart';
 import '../services/preferences_service.dart';
 import '../services/telemetry_service.dart';
+import '../locator.dart';
 
 /// Returns [true] if the audiobooks folder was changed (triggers a rescan).
 class SettingsScreen extends StatefulWidget {
@@ -22,6 +23,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   bool _folderChanged = false;
   bool _pickingFolder = false;
   String _themeMode = 'system';
+  bool _autoRewind = true;
 
   @override
   void initState() {
@@ -30,16 +32,18 @@ class _SettingsScreenState extends State<SettingsScreen> {
   }
 
   Future<void> _load() async {
-    final prefs = PreferencesService();
+    final prefs = locator<PreferencesService>();
     final path = await prefs.getLibraryPath();
     final consent = await prefs.getAnalyticsConsent();
     final themeMode = await prefs.getThemeMode();
     final enrichment = await prefs.getMetadataEnrichment();
+    final autoRewind = await prefs.getAutoRewind();
     setState(() {
       _folderPath = path;
       _telemetryEnabled = consent ?? false;
       _themeMode = themeMode ?? 'system';
       _metadataEnrichment = enrichment;
+      _autoRewind = autoRewind;
     });
   }
 
@@ -60,7 +64,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
         dialogTitle: 'Select your audiobooks folder',
       );
       if (result != null && result != _folderPath) {
-        await PreferencesService().setLibraryPath(result);
+        await locator<PreferencesService>().setLibraryPath(result);
         setState(() {
           _folderPath = result;
           _folderChanged = true;
@@ -72,7 +76,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   }
 
   Future<void> _setThemeMode(String value) async {
-    await PreferencesService().setThemeMode(value);
+    await locator<PreferencesService>().setThemeMode(value);
     ThemeMode themeMode;
     switch (value) {
       case 'light':
@@ -89,13 +93,18 @@ class _SettingsScreenState extends State<SettingsScreen> {
   }
 
   Future<void> _setMetadataEnrichment(bool value) async {
-    await PreferencesService().setMetadataEnrichment(value);
-    if (!value) EnrichmentService().cancel();
+    await locator<PreferencesService>().setMetadataEnrichment(value);
+    if (!value) locator<EnrichmentService>().cancel();
     setState(() => _metadataEnrichment = value);
   }
 
+  Future<void> _setAutoRewind(bool value) async {
+    await locator<PreferencesService>().setAutoRewind(value);
+    setState(() => _autoRewind = value);
+  }
+
   Future<void> _setTelemetry(bool value) async {
-    await PreferencesService().setAnalyticsConsent(value);
+    await locator<PreferencesService>().setAnalyticsConsent(value);
     await TelemetryService.applyConsent(value);
     if (value) TelemetryService.enableCrashHandler();
     setState(() => _telemetryEnabled = value);
@@ -190,6 +199,19 @@ class _SettingsScreenState extends State<SettingsScreen> {
               onChanged: _setMetadataEnrichment,
             ),
             onTap: () => _setMetadataEnrichment(!_metadataEnrichment),
+            contentPadding:
+                const EdgeInsets.symmetric(horizontal: 20, vertical: 4),
+          ),
+          ListTile(
+            leading: const Icon(Icons.fast_rewind_rounded),
+            title: const Text('Smart rewind on resume'),
+            subtitle: const Text(
+                'Jumps back a few seconds if you haven\'t listened in a while'),
+            trailing: Switch(
+              value: _autoRewind,
+              onChanged: _setAutoRewind,
+            ),
+            onTap: () => _setAutoRewind(!_autoRewind),
             contentPadding:
                 const EdgeInsets.symmetric(horizontal: 20, vertical: 4),
           ),

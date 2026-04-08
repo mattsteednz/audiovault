@@ -1,14 +1,13 @@
 import 'package:shared_preferences/shared_preferences.dart';
 
 class PreferencesService {
-  static final PreferencesService _instance = PreferencesService._();
-  PreferencesService._();
-  factory PreferencesService() => _instance;
+  PreferencesService();
 
   static const _libraryPathKey = 'library_path';
   static const _analyticsConsentKey = 'analytics_consent';
   static const _themeModeKey = 'theme_mode';
   static const _metadataEnrichmentKey = 'metadata_enrichment';
+  static const _autoRewindKey = 'auto_rewind';
 
   SharedPreferences? _prefs;
 
@@ -53,5 +52,13 @@ class PreferencesService {
 
   Future<void> setMetadataEnrichment(bool value) async {
     await (await _sp).setBool(_metadataEnrichmentKey, value);
+  }
+
+  Future<bool> getAutoRewind() async {
+    return (await _sp).getBool(_autoRewindKey) ?? true; // default on
+  }
+
+  Future<void> setAutoRewind(bool value) async {
+    await (await _sp).setBool(_autoRewindKey, value);
   }
 }

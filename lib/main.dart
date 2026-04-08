@@ -9,7 +9,9 @@ import 'screens/onboarding_screen.dart';
 import 'services/audio_handler.dart';
 import 'services/preferences_service.dart';
 import 'services/telemetry_service.dart';
+import 'firebase_options.dart';
 import 'widgets/audio_handler_scope.dart';
+import 'locator.dart';
 
 ThemeMode _themeModeFromString(String? value) {
   switch (value) {
@@ -24,6 +26,7 @@ ThemeMode _themeModeFromString(String? value) {
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  setupLocator();
 
   // Initialise audio service.
   final audioHandler = await AudioService.init<AudioVaultHandler>(
@@ -60,7 +63,9 @@ void main() async {
 
   // Initialise Firebase — silently ignored if config files are placeholders.
   try {
-    await Firebase.initializeApp();
+    await Firebase.initializeApp(
+      options: DefaultFirebaseOptions.currentPlatform,
+    );
     TelemetryService.markAvailable();
   } catch (_) {
     // Firebase not yet configured — app continues without telemetry.
@@ -68,7 +73,7 @@ void main() async {
 
   // Read persisted theme mode before first frame so there is no flash.
   final themeModeNotifier = ValueNotifier<ThemeMode>(ThemeMode.system);
-  final storedTheme = await PreferencesService().getThemeMode();
+  final storedTheme = await locator<PreferencesService>().getThemeMode();
   themeModeNotifier.value = _themeModeFromString(storedTheme);
 
   runApp(AudioVaultApp(
@@ -149,7 +154,7 @@ class _AppEntryPointState extends State<_AppEntryPoint> {
   }
 
   Future<void> _check() async {
-    final prefs = PreferencesService();
+    final prefs = locator<PreferencesService>();
     final consent = await prefs.getAnalyticsConsent();
 
     if (consent == null) {
@@ -170,11 +175,11 @@ class _AppEntryPointState extends State<_AppEntryPoint> {
   }
 
   Future<void> _handleConsent(bool accepted) async {
-    await PreferencesService().setAnalyticsConsent(accepted);
+    await locator<PreferencesService>().setAnalyticsConsent(accepted);
     await TelemetryService.applyConsent(accepted);
     if (accepted) TelemetryService.enableCrashHandler();
 
-    final path = await PreferencesService().getLibraryPath();
+    final path = await locator<PreferencesService>().getLibraryPath();
     setState(() {
       _consentDecided = true;
       _hasLibrary = path != null && path.isNotEmpty;

@@ -2,9 +2,7 @@ import 'package:path_provider/path_provider.dart';
 import 'package:sqflite/sqflite.dart';
 
 class PositionService {
-  static final PositionService _instance = PositionService._();
-  PositionService._();
-  factory PositionService() => _instance;
+  PositionService();
 
   Database? _db;
 

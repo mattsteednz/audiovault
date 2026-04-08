@@ -3,6 +3,7 @@ import '../models/audiobook.dart';
 import '../services/position_service.dart';
 import '../widgets/book_cover.dart';
 import 'player_screen.dart';
+import '../locator.dart';
 
 class HistoryScreen extends StatefulWidget {
   final List<Audiobook> books;
@@ -22,7 +23,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
   }
 
   Future<void> _load() async {
-    final positions = await PositionService().getAllPositions();
+    final positions = await locator<PositionService>().getAllPositions();
     final entries = <_HistoryEntry>[];
     for (final p in positions) {
       final book =

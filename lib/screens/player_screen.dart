@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:io';
 import 'package:audio_service/audio_service.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_chrome_cast/flutter_chrome_cast.dart';
@@ -119,10 +120,26 @@ class _PlayerScreenState extends State<PlayerScreen> {
 
   // ── Cast device picker ───────────────────────────────────────────────────────
 
+  static Future<bool> _vpnActive() async {
+    try {
+      final interfaces = await NetworkInterface.list();
+      return interfaces.any((i) {
+        final n = i.name.toLowerCase();
+        return n.startsWith('tun') ||
+            n.startsWith('ppp') ||
+            n.startsWith('tap') ||
+            n.startsWith('vpn');
+      });
+    } catch (_) {
+      return false;
+    }
+  }
+
   Future<void> _showCastPicker() async {
     final discovery = GoogleCastDiscoveryManager.instance;
     final sessionManager = GoogleCastSessionManager.instance;
 
+    final vpn = await _vpnActive();
     await discovery.startDiscovery();
     if (!mounted) return;
 
@@ -132,44 +149,76 @@ class _PlayerScreenState extends State<PlayerScreen> {
         title: const Text('Cast to device'),
         content: SizedBox(
           width: double.maxFinite,
-          child: StreamBuilder<List<GoogleCastDevice>>(
-            stream: discovery.devicesStream,
-            initialData: discovery.devices,
-            builder: (ctx, snap) {
-              final devices = snap.data ?? [];
-              if (devices.isEmpty) {
-                return const Padding(
-                  padding: EdgeInsets.symmetric(vertical: 16),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              if (vpn)
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 12),
                   child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      SizedBox(
-                        width: 20,
-                        height: 20,
-                        child: CircularProgressIndicator(strokeWidth: 2),
+                      Icon(Icons.warning_amber_rounded,
+                          size: 20,
+                          color: Theme.of(ctx).colorScheme.error),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          'A VPN connection is active. This may prevent '
+                          'casting from working correctly.',
+                          style: Theme.of(ctx).textTheme.bodySmall?.copyWith(
+                                color: Theme.of(ctx).colorScheme.error,
+                              ),
+                        ),
                       ),
-                      SizedBox(width: 12),
-                      Text('Scanning for devices…'),
                     ],
                   ),
-                );
-              }
-              return ListView.builder(
-                shrinkWrap: true,
-                itemCount: devices.length,
-                itemBuilder: (ctx, i) {
-                  final device = devices[i];
-                  return ListTile(
-                    leading: const Icon(Icons.cast),
-                    title: Text(device.friendlyName),
-                    subtitle: device.modelName != null ? Text(device.modelName!) : null,
-                    onTap: () {
-                      sessionManager.startSessionWithDevice(device);
-                      Navigator.of(ctx).pop();
-                    },
-                  );
-                },
-              );
-            },
+                ),
+              Flexible(
+                child: StreamBuilder<List<GoogleCastDevice>>(
+                  stream: discovery.devicesStream,
+                  initialData: discovery.devices,
+                  builder: (ctx, snap) {
+                    final devices = snap.data ?? [];
+                    if (devices.isEmpty) {
+                      return const Padding(
+                        padding: EdgeInsets.symmetric(vertical: 16),
+                        child: Row(
+                          children: [
+                            SizedBox(
+                              width: 20,
+                              height: 20,
+                              child:
+                                  CircularProgressIndicator(strokeWidth: 2),
+                            ),
+                            SizedBox(width: 12),
+                            Text('Scanning for devices…'),
+                          ],
+                        ),
+                      );
+                    }
+                    return ListView.builder(
+                      shrinkWrap: true,
+                      itemCount: devices.length,
+                      itemBuilder: (ctx, i) {
+                        final device = devices[i];
+                        return ListTile(
+                          leading: const Icon(Icons.cast),
+                          title: Text(device.friendlyName),
+                          subtitle: device.modelName != null
+                              ? Text(device.modelName!)
+                              : null,
+                          onTap: () {
+                            sessionManager.startSessionWithDevice(device);
+                            Navigator.of(ctx).pop();
+                          },
+                        );
+                      },
+                    );
+                  },
+                ),
+              ),
+            ],
           ),
         ),
         actions: [
@@ -240,7 +289,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
                 Expanded(
                   child: isM4b
                       ? StreamBuilder<Duration>(
-                          stream: _audioHandler.player.positionStream,
+                          stream: _audioHandler.effectivePositionStream,
                           builder: (ctx, snap) {
                             final pos = snap.data ?? Duration.zero;
                             final currentIdx =
@@ -439,7 +488,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
         if (isM4b)
           // For M4B: derive current chapter from playback position
           StreamBuilder<Duration>(
-            stream: _audioHandler.player.positionStream,
+            stream: _audioHandler.effectivePositionStream,
             builder: (_, snap) {
               final pos = snap.data ?? Duration.zero;
               final idx = book.chapterIndexAt(pos);
@@ -461,11 +510,11 @@ class _PlayerScreenState extends State<PlayerScreen> {
   Widget _progressSection(Audiobook book, ThemeData theme) {
     final isM4b = book.chapters.isNotEmpty;
     return StreamBuilder<Duration?>(
-      stream: _audioHandler.player.durationStream,
+      stream: _audioHandler.effectiveDurationStream,
       builder: (_, durSnap) {
         final dur = durSnap.data ?? Duration.zero;
         return StreamBuilder<Duration>(
-          stream: _audioHandler.player.positionStream,
+          stream: _audioHandler.effectivePositionStream,
           builder: (_, posSnap) {
             final pos = posSnap.data ?? Duration.zero;
             final displayed = _dragging ? _dragPosition : pos;
@@ -478,17 +527,27 @@ class _PlayerScreenState extends State<PlayerScreen> {
             final displayedSec =
                 Duration(seconds: displayed.inSeconds);
 
-            // Chapter-scoped elapsed and remaining
+            // Chapter-scoped elapsed and remaining.
+            // Use raw `displayed` (not second-snapped) for chapter lookup so we
+            // don't land one chapter behind when position is just past a boundary
+            // that doesn't fall on a whole second (e.g. chapters[4].start=1574007ms
+            // but displayedSec=1574000ms would return chapter 3 for ~1 second).
             final Duration chapterElapsed;
             final Duration chapterRemaining;
             if (isM4b) {
-              final chIdx = book.chapterIndexAt(displayedSec);
+              final chIdx = book.chapterIndexAt(displayed);
               final chStart = book.chapters[chIdx].start;
               final chEnd = (chIdx + 1 < book.chapters.length)
                   ? book.chapters[chIdx + 1].start
                   : dur;
-              chapterElapsed = displayedSec - chStart;
-              chapterRemaining = chEnd - displayedSec;
+              // Clamp elapsed to zero: displayedSec can be slightly before chStart
+              // in the first sub-second after a seek to a non-second-aligned boundary.
+              chapterElapsed = displayedSec > chStart
+                  ? displayedSec - chStart
+                  : Duration.zero;
+              chapterRemaining = chEnd > displayedSec
+                  ? chEnd - displayedSec
+                  : Duration.zero;
             } else {
               // MP3: positionStream/durationStream are already per-file
               chapterElapsed = displayedSec;

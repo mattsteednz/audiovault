@@ -14,6 +14,7 @@ import '../widgets/book_cover.dart';
 import 'history_screen.dart';
 import 'player_screen.dart';
 import 'settings_screen.dart';
+import '../locator.dart';
 
 enum _ViewMode { grid, list }
 
@@ -47,7 +48,7 @@ class _LibraryScreenState extends State<LibraryScreen> {
       _didInit = true;
       _audioHandler = AudioHandlerScope.of(context).audioHandler;
       _scan();
-      _enrichSub = EnrichmentService().onCoverFetched.listen(_onCoverFetched);
+      _enrichSub = locator<EnrichmentService>().onCoverFetched.listen(_onCoverFetched);
       _playbackSub = _audioHandler.playbackState.listen((state) {
         final newPath = _audioHandler.currentBook?.path;
         if (newPath != _activePath || state.playing != _isPlaying) {
@@ -75,7 +76,7 @@ class _LibraryScreenState extends State<LibraryScreen> {
       _error = null;
     });
     try {
-      final path = await PreferencesService().getLibraryPath();
+      final path = await locator<PreferencesService>().getLibraryPath();
       if (path == null) {
         setState(() {
           _error = 'No library folder set.';
@@ -83,10 +84,10 @@ class _LibraryScreenState extends State<LibraryScreen> {
         });
         return;
       }
-      final books = await ScannerService().scanFolder(path);
+      final books = await locator<ScannerService>().scanFolder(path);
 
       // Apply any covers already fetched in a previous session.
-      final cachedCovers = await EnrichmentService().getAllEnrichedCovers();
+      final cachedCovers = await locator<EnrichmentService>().getAllEnrichedCovers();
       _rawBooks = cachedCovers.isEmpty
           ? books
           : books.map((b) {
@@ -101,15 +102,15 @@ class _LibraryScreenState extends State<LibraryScreen> {
       setState(() => _scanning = false);
 
       // Start background enrichment for books missing covers.
-      final enrichEnabled = await PreferencesService().getMetadataEnrichment();
+      final enrichEnabled = await locator<PreferencesService>().getMetadataEnrichment();
       if (enrichEnabled) {
-        unawaited(EnrichmentService().enqueueBooks(_rawBooks!));
+        unawaited(locator<EnrichmentService>().enqueueBooks(_rawBooks!));
       }
 
       // Restore the last-played book into the handler so the mini player
       // appears immediately on launch (without auto-playing).
       if (_audioHandler.currentBook == null) {
-        final lastPath = await PositionService().getLastPlayedBookPath();
+        final lastPath = await locator<PositionService>().getLastPlayedBookPath();
         if (lastPath != null) {
           final book = books.where((b) => b.path == lastPath).firstOrNull;
           if (book != null) await _audioHandler.loadBook(book);
@@ -128,7 +129,7 @@ class _LibraryScreenState extends State<LibraryScreen> {
     final raw = _rawBooks;
     if (raw == null) return;
 
-    final positions = await PositionService().getAllPositions();
+    final positions = await locator<PositionService>().getAllPositions();
     final played = <String, int>{
       for (final p in positions) p.bookPath: p.updatedAt
     };
@@ -354,7 +355,7 @@ class _MiniPlayer extends StatelessWidget {
           children: [
             // Thin progress bar (global book progress)
             StreamBuilder<Duration>(
-              stream: ah.player.positionStream,
+              stream: ah.effectivePositionStream,
               builder: (_, posSnap) {
                 final totalMs =
                     book.duration?.inMilliseconds.toDouble() ?? 0;
@@ -366,7 +367,7 @@ class _MiniPlayer extends StatelessWidget {
                         theme.colorScheme.surfaceContainerHighest,
                   );
                 }
-                final idx = ah.player.currentIndex ?? 0;
+                final idx = ah.isCasting ? 0 : (ah.player.currentIndex ?? 0);
                 int offsetMs = 0;
                 for (int i = 0;
                     i < idx && i < book.chapterDurations.length;
@@ -421,7 +422,7 @@ class _MiniPlayer extends StatelessWidget {
                               overflow: TextOverflow.ellipsis,
                             ),
                             StreamBuilder<Duration>(
-                              stream: ah.player.positionStream,
+                              stream: ah.effectivePositionStream,
                               builder: (_, posSnap) {
                                 final remaining =
                                     _remaining(ah, book, posSnap.data);
@@ -465,7 +466,7 @@ class _MiniPlayer extends StatelessWidget {
       AudioVaultHandler ah, Audiobook book, Duration? chapterPos) {
     final totalMs = book.duration?.inMilliseconds;
     if (totalMs == null || totalMs == 0) return null;
-    final idx = ah.player.currentIndex ?? 0;
+    final idx = ah.isCasting ? 0 : (ah.player.currentIndex ?? 0);
     int offsetMs = 0;
     for (int i = 0; i < idx && i < book.chapterDurations.length; i++) {
       offsetMs += book.chapterDurations[i].inMilliseconds;

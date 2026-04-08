@@ -8,9 +8,7 @@ import 'package:sqflite/sqflite.dart';
 import '../models/audiobook.dart';
 
 class EnrichmentService {
-  static final EnrichmentService _instance = EnrichmentService._();
-  EnrichmentService._();
-  factory EnrichmentService() => _instance;
+  EnrichmentService();
 
   static void _log(String msg) => debugPrint('[AudioVault:Enrichment] $msg');
 

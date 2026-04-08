@@ -6,6 +6,39 @@ All notable changes to AudioVault are documented here.
 
 ---
 
+## [1.0.2] — 2026-04-08
+
+### Added
+
+- **Smart rewind on resume** — Playback automatically rewinds when you resume after a break: 10 s after 5 min, 15 s after 1 hour, 30 s after 24 hours. Toggleable via a new "Smart rewind on resume" switch in Settings (on by default).
+- **Full Cast playback routing** — All playback controls (play, pause, seek, chapter skip, rewind, fast-forward, speed) now route to the Cast device when a Cast session is active. Previously only load/connect was wired up; everything else still drove local playback.
+- **VPN warning in Cast picker** — A warning banner is shown in the Cast device picker when a VPN connection is detected, as VPNs routinely prevent Cast discovery and streaming.
+- **`CastServer`** — Lightweight on-device HTTP server (with HTTP Range support) that serves local audio files over the LAN so Cast devices can stream them directly.
+- **`effectivePositionStream` / `effectiveDurationStream`** — New streams on `AudioVaultHandler` that transparently emit local or Cast position/duration depending on the active playback mode. All UI that previously read `player.positionStream` now reads these.
+- **`TelemetryService.logEvent`** — Static helper for logging custom Firebase Analytics events; no-ops when Firebase is unavailable.
+- **`get_it` service locator** — Services (`PositionService`, `PreferencesService`, `ScannerService`, `EnrichmentService`) are now registered as lazy singletons via `get_it` and resolved through `locator.dart`, enabling proper DI for testing.
+- **Unit tests** — Tests for `AudioVaultHandler` (rewind offsets, global position calculation) and `ScannerService`.
+
+### Fixed
+
+- **Chapter index off-by-one at boundaries** — The chapter elapsed/remaining time display now uses the raw playback position for chapter lookup instead of a second-snapped value, preventing a ~1 s window where the previous chapter was shown right after crossing a chapter boundary.
+- **Mini player position during Cast** — Mini player progress and remaining-time label now use `effectivePositionStream` and skip `player.currentIndex` when casting.
+- **Hidden files and folders excluded from scan** — The library scanner now ignores files and directories whose names start with `.` (e.g. `.DS_Store`, `.Spotlight-V100`).
+
+### Changed
+
+- Service singletons (`PositionService`, `PreferencesService`, `ScannerService`, `EnrichmentService`) converted from factory constructors to `get_it` lazy singletons; singleton factories removed from the service classes themselves.
+- `_globalPositionMs()` refactored into a public static `calculateGlobalPosition()` method (`@visibleForTesting`) for unit testability.
+- Firebase is now initialized with `DefaultFirebaseOptions.currentPlatform` from the generated `firebase_options.dart`.
+
+### Dependencies
+
+- Added `get_it: ^9.2.1`
+- Added `mockito: ^5.6.4` (dev)
+- Added `build_runner: ^2.13.1` (dev)
+
+---
+
 ## [1.0.1] — 2026-04-06
 
 ### Added

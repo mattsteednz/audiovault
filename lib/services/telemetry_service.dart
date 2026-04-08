@@ -28,6 +28,22 @@ class TelemetryService {
     }
   }
 
+  /// Log a custom analytics event.  No-ops when Firebase is unavailable.
+  static Future<void> logEvent(
+    String name, {
+    Map<String, Object>? parameters,
+  }) async {
+    if (!_available) return;
+    try {
+      await FirebaseAnalytics.instance.logEvent(
+        name: name,
+        parameters: parameters,
+      );
+    } catch (e) {
+      debugPrint('[AudioVault:Telemetry] logEvent error: $e');
+    }
+  }
+
   /// Wire Crashlytics into Flutter's error handler.
   /// Only called when Firebase is available and the user has opted in.
   static void enableCrashHandler() {

@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:permission_handler/permission_handler.dart';
 import '../services/preferences_service.dart';
 import 'library_screen.dart';
+import '../locator.dart';
 
 class OnboardingScreen extends StatefulWidget {
   const OnboardingScreen({super.key});
@@ -55,7 +56,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
         setState(() => _loading = false);
         return;
       }
-      await PreferencesService().setLibraryPath(result);
+      await locator<PreferencesService>().setLibraryPath(result);
       if (mounted) {
         Navigator.of(context).pushReplacement(
           MaterialPageRoute(builder: (_) => const LibraryScreen()),
