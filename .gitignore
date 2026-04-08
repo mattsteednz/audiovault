@@ -49,3 +49,8 @@ app.*.map.json
 
 # Node / deploy tooling
 node_modules/
+
+# Android signing — never commit these
+android/key.properties
+*.jks
+*.keystore
