@@ -6,6 +6,28 @@ All notable changes to AudioVault are documented here.
 
 ---
 
+## [1.0.3] — 2026-04-09
+
+### Added
+
+- **About screen** — Accessible from the bottom of Settings. Shows app name, version, links to the AudioVault website, privacy policy, and source code, plus a full third-party licences screen.
+- **Third-party licences screen** — Lists all direct open-source dependencies with SPDX badge, copyright, and expandable full licence text (verbatim where required by BSD/Apache-2.0 terms).
+- **App icon** — Custom vault-door icon replaces the Flutter default, applied across all Android mipmap densities (mdpi → xxxhdpi) with adaptive foreground layer and a matching 512 × 512 Play Store asset.
+
+### Fixed
+
+- **`path_provider_android` pinned to 2.2.23** — Prevents `path_provider_android ≥ 2.3.x` from pulling in `jni`/`jni_flutter`, which require NDK to compile `libdartjni.so`. Without NDK the `.so` is absent from the APK and the scanner crashes at runtime.
+
+### Dependencies
+
+- Added `package_info_plus: ^8.0.0`
+- Added `url_launcher: ^6.3.0`
+- Bumped `firebase_core` → `^4.0.0`, `firebase_analytics` → `^12.0.0`, `firebase_crashlytics` → `^5.0.0`
+- Bumped `flutter_lints` → `^6.0.0`
+- `path_provider_android` held at `2.2.23` via `dependency_overrides`
+
+---
+
 ## [1.0.2] — 2026-04-08
 
 ### Added
