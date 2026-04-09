@@ -7,6 +7,7 @@ import '../widgets/audio_handler_scope.dart';
 import '../services/preferences_service.dart';
 import '../services/telemetry_service.dart';
 import '../locator.dart';
+import 'about_screen.dart';
 
 /// Returns [true] if the audiobooks folder was changed (triggers a rescan).
 class SettingsScreen extends StatefulWidget {
@@ -240,6 +241,22 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 color: theme.colorScheme.onSurface.withValues(alpha: 0.55),
               ),
             ),
+          ),
+
+          const Divider(),
+
+          // ── About ─────────────────────────────────────────────────────────
+          ListTile(
+            leading: const Icon(Icons.info_outline_rounded),
+            title: const Text('About AudioVault'),
+            subtitle: const Text('Version, licences, source code'),
+            trailing: const Icon(Icons.chevron_right),
+            onTap: () => Navigator.push(
+              context,
+              MaterialPageRoute(builder: (_) => const AboutScreen()),
+            ),
+            contentPadding:
+                const EdgeInsets.symmetric(horizontal: 20, vertical: 4),
           ),
         ],
       ),
