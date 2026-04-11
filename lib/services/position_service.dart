@@ -1,10 +1,19 @@
+import 'package:flutter/foundation.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:sqflite/sqflite.dart';
 
 class PositionService {
   PositionService();
 
+  /// Injects an already-opened [Database] — for use in tests only.
+  @visibleForTesting
+  PositionService.withDatabase(Database db) : _db = db;
+
   Database? _db;
+
+  /// Direct database access for test assertions — do not use in production.
+  @visibleForTesting
+  Future<Database> get databaseForTesting => _database;
 
   Future<Database> get _database async {
     _db ??= await _openDb();

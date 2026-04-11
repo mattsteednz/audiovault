@@ -36,6 +36,39 @@ void main() {
       expect(handler, isNotNull);
     });
 
+    group('getRewindOffset (Smart Rewind)', () {
+      test('returns zero for pauses under 5 minutes', () {
+        expect(AudioVaultHandler.getRewindOffset(Duration.zero), Duration.zero);
+        expect(AudioVaultHandler.getRewindOffset(const Duration(minutes: 4, seconds: 59)), Duration.zero);
+      });
+
+      test('returns 10s at exactly 5 minutes', () {
+        expect(AudioVaultHandler.getRewindOffset(const Duration(minutes: 5)), const Duration(seconds: 10));
+      });
+
+      test('returns 10s for pauses between 5 minutes and 1 hour', () {
+        expect(AudioVaultHandler.getRewindOffset(const Duration(minutes: 30)), const Duration(seconds: 10));
+        expect(AudioVaultHandler.getRewindOffset(const Duration(minutes: 59, seconds: 59)), const Duration(seconds: 10));
+      });
+
+      test('returns 15s at exactly 1 hour', () {
+        expect(AudioVaultHandler.getRewindOffset(const Duration(hours: 1)), const Duration(seconds: 15));
+      });
+
+      test('returns 15s for pauses between 1 hour and 24 hours', () {
+        expect(AudioVaultHandler.getRewindOffset(const Duration(hours: 6)), const Duration(seconds: 15));
+        expect(AudioVaultHandler.getRewindOffset(const Duration(hours: 23, minutes: 59, seconds: 59)), const Duration(seconds: 15));
+      });
+
+      test('returns 30s at exactly 24 hours', () {
+        expect(AudioVaultHandler.getRewindOffset(const Duration(hours: 24)), const Duration(seconds: 30));
+      });
+
+      test('returns 30s for pauses over 24 hours', () {
+        expect(AudioVaultHandler.getRewindOffset(const Duration(days: 3)), const Duration(seconds: 30));
+      });
+    });
+
     group('calculateGlobalPosition (Timeline Math)', () {
       final durations = [
         const Duration(minutes: 5), // 300,000 ms
