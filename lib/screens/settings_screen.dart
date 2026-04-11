@@ -25,6 +25,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   bool _pickingFolder = false;
   String _themeMode = 'system';
   bool _autoRewind = true;
+  int _skipInterval = 30;
 
   @override
   void initState() {
@@ -39,12 +40,14 @@ class _SettingsScreenState extends State<SettingsScreen> {
     final themeMode = await prefs.getThemeMode();
     final enrichment = await prefs.getMetadataEnrichment();
     final autoRewind = await prefs.getAutoRewind();
+    final skipInterval = await prefs.getSkipInterval();
     setState(() {
       _folderPath = path;
       _telemetryEnabled = consent ?? false;
       _themeMode = themeMode ?? 'system';
       _metadataEnrichment = enrichment;
       _autoRewind = autoRewind;
+      _skipInterval = skipInterval;
     });
   }
 
@@ -102,6 +105,26 @@ class _SettingsScreenState extends State<SettingsScreen> {
   Future<void> _setAutoRewind(bool value) async {
     await locator<PreferencesService>().setAutoRewind(value);
     setState(() => _autoRewind = value);
+  }
+
+  Future<void> _setSkipInterval(int seconds) async {
+    final handler = AudioHandlerScope.of(context).audioHandler;
+    await locator<PreferencesService>().setSkipInterval(seconds);
+    handler.updateSkipInterval(seconds);
+    setState(() => _skipInterval = seconds);
+  }
+
+  void _showSkipIntervalDialog() {
+    showDialog<void>(
+      context: context,
+      builder: (context) => _SkipIntervalDialog(
+        current: _skipInterval,
+        onSelected: (value) {
+          Navigator.pop(context);
+          _setSkipInterval(value);
+        },
+      ),
+    );
   }
 
   Future<void> _setTelemetry(bool value) async {
@@ -216,6 +239,14 @@ class _SettingsScreenState extends State<SettingsScreen> {
             contentPadding:
                 const EdgeInsets.symmetric(horizontal: 20, vertical: 4),
           ),
+          ListTile(
+            leading: const Icon(Icons.skip_next_rounded),
+            title: const Text('Skip interval'),
+            subtitle: Text('${_skipInterval}s rewind / fast-forward'),
+            onTap: _showSkipIntervalDialog,
+            contentPadding:
+                const EdgeInsets.symmetric(horizontal: 20, vertical: 4),
+          ),
           const Divider(),
 
           // ── Privacy ──────────────────────────────────────────────────────
@@ -259,6 +290,68 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 const EdgeInsets.symmetric(horizontal: 20, vertical: 4),
           ),
         ],
+      ),
+    );
+  }
+}
+
+class _SkipIntervalDialog extends StatelessWidget {
+  final int current;
+  final void Function(int) onSelected;
+
+  const _SkipIntervalDialog({required this.current, required this.onSelected});
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    const options = [
+      (value: 10, label: '10 seconds'),
+      (value: 15, label: '15 seconds'),
+      (value: 30, label: '30 seconds'),
+      (value: 45, label: '45 seconds'),
+      (value: 60, label: '60 seconds'),
+    ];
+
+    return Dialog(
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(24, 24, 24, 16),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('Skip interval', style: theme.textTheme.titleLarge),
+            const SizedBox(height: 8),
+            ...options.map((opt) {
+              final selected = opt.value == current;
+              return InkWell(
+                onTap: () => onSelected(opt.value),
+                borderRadius: BorderRadius.circular(8),
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(
+                      vertical: 14, horizontal: 8),
+                  child: Row(
+                    children: [
+                      Text(
+                        opt.label,
+                        style: theme.textTheme.bodyLarge?.copyWith(
+                          color: selected
+                              ? theme.colorScheme.primary
+                              : theme.colorScheme.onSurface,
+                          fontWeight:
+                              selected ? FontWeight.w600 : null,
+                        ),
+                      ),
+                      const Spacer(),
+                      if (selected)
+                        Icon(Icons.check_rounded,
+                            color: theme.colorScheme.primary),
+                    ],
+                  ),
+                ),
+              );
+            }),
+          ],
+        ),
       ),
     );
   }

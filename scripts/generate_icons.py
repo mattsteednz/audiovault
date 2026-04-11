@@ -214,6 +214,16 @@ def main():
     img = draw_icon(512)
     save(img, str(root / "store/icon-512.png"))
 
+    # ── Amazon Appstore icons ────────────────────────────────────────────────
+    # 512×512  — store listing (hi-res icon)
+    # 114×114  — device icon shown on Fire devices
+    # Both accept transparency; draw_icon() already renders on a transparent
+    # canvas with the rounded-rect background, so no extra work needed.
+    print("\nAmazon Appstore icons:")
+    for size in (512, 114):
+        img = draw_icon(size)
+        save(img, str(root / f"store/amazon/icon-{size}.png"))
+
     print("\nDone.")
 
 

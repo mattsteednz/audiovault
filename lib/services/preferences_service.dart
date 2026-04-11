@@ -8,6 +8,7 @@ class PreferencesService {
   static const _themeModeKey = 'theme_mode';
   static const _metadataEnrichmentKey = 'metadata_enrichment';
   static const _autoRewindKey = 'auto_rewind';
+  static const _skipIntervalKey = 'skip_interval_seconds';
 
   SharedPreferences? _prefs;
 
@@ -60,5 +61,14 @@ class PreferencesService {
 
   Future<void> setAutoRewind(bool value) async {
     await (await _sp).setBool(_autoRewindKey, value);
+  }
+
+  /// Skip interval in seconds used by rewind and fast-forward. Default: 30.
+  Future<int> getSkipInterval() async {
+    return (await _sp).getInt(_skipIntervalKey) ?? 30;
+  }
+
+  Future<void> setSkipInterval(int seconds) async {
+    await (await _sp).setInt(_skipIntervalKey, seconds);
   }
 }

@@ -27,6 +27,8 @@ class AudioVaultHandler extends BaseAudioHandler {
   bool _casting = false;
   bool get isCasting => _casting;
 
+  int _skipInterval = 30;
+
   final _castingController = StreamController<bool>.broadcast();
   Stream<bool> get castingStream => _castingController.stream;
 
@@ -48,6 +50,10 @@ class AudioVaultHandler extends BaseAudioHandler {
       _effectiveDurationController.stream;
 
   AudioVaultHandler() {
+    locator<PreferencesService>().getSkipInterval().then((s) {
+      _skipInterval = s;
+    });
+
     _player.playbackEventStream.listen(
       _broadcastState,
       onError: (Object e) {
@@ -307,11 +313,11 @@ class AudioVaultHandler extends BaseAudioHandler {
 
     playbackState.add(playbackState.value.copyWith(
       controls: [
-        MediaControl.rewind,
+        _rewindControl,
         MediaControl.skipToPrevious,
         playing ? MediaControl.pause : MediaControl.play,
         MediaControl.skipToNext,
-        MediaControl.fastForward,
+        _forwardControl,
       ],
       systemActions: const {MediaAction.seek},
       androidCompactActionIndices: const [1, 2, 3],
@@ -579,10 +585,12 @@ class AudioVaultHandler extends BaseAudioHandler {
 
   @override
   Future<void> fastForward() async {
+    final secs = await locator<PreferencesService>().getSkipInterval();
+    final interval = Duration(seconds: secs);
     if (_casting) {
       await GoogleCastRemoteMediaClient.instance.seek(
         GoogleCastMediaSeekOption(
-          position: const Duration(seconds: 30),
+          position: interval,
           relative: true,
           resumeState: GoogleCastMediaResumeState.unchanged,
         ),
@@ -590,23 +598,25 @@ class AudioVaultHandler extends BaseAudioHandler {
       return;
     }
     final dur = _player.duration ?? Duration.zero;
-    final pos = _player.position + const Duration(seconds: 30);
+    final pos = _player.position + interval;
     await _player.seek(pos > dur ? dur : pos);
   }
 
   @override
   Future<void> rewind() async {
+    final secs = await locator<PreferencesService>().getSkipInterval();
+    final interval = Duration(seconds: secs);
     if (_casting) {
       await GoogleCastRemoteMediaClient.instance.seek(
         GoogleCastMediaSeekOption(
-          position: const Duration(seconds: -30),
+          position: Duration(seconds: -secs),
           relative: true,
           resumeState: GoogleCastMediaResumeState.unchanged,
         ),
       );
       return;
     }
-    final pos = _player.position - const Duration(seconds: 30);
+    final pos = _player.position - interval;
     await _player.seek(pos < Duration.zero ? Duration.zero : pos);
   }
 
@@ -634,17 +644,34 @@ class AudioVaultHandler extends BaseAudioHandler {
 
   // ── State broadcasting ─────────────────────────────────────────────────────
 
+  void updateSkipInterval(int seconds) {
+    _skipInterval = seconds;
+    _broadcastState(null);
+  }
+
+  MediaControl get _rewindControl => MediaControl(
+    androidIcon: 'drawable/ic_replay',
+    label: '-$_skipInterval s',
+    action: MediaAction.rewind,
+  );
+
+  MediaControl get _forwardControl => MediaControl(
+    androidIcon: 'drawable/ic_forward',
+    label: '+$_skipInterval s',
+    action: MediaAction.fastForward,
+  );
+
   void _broadcastState(PlaybackEvent? event) {
     if (_casting) return; // Cast status drives the broadcast when casting.
 
     final playing = _player.playing;
     playbackState.add(playbackState.value.copyWith(
       controls: [
-        MediaControl.rewind,
+        _rewindControl,
         MediaControl.skipToPrevious,
         playing ? MediaControl.pause : MediaControl.play,
         MediaControl.skipToNext,
-        MediaControl.fastForward,
+        _forwardControl,
       ],
       systemActions: const {MediaAction.seek},
       androidCompactActionIndices: const [1, 2, 3],

@@ -6,8 +6,10 @@ import 'package:flutter_chrome_cast/flutter_chrome_cast.dart';
 import 'package:path/path.dart' as p;
 import '../models/audiobook.dart';
 import '../services/audio_handler.dart';
+import '../services/preferences_service.dart';
 import '../widgets/audio_handler_scope.dart';
 import '../widgets/book_cover.dart';
+import '../locator.dart';
 
 // ── Sleep timer options ───────────────────────────────────────────────────────
 
@@ -24,7 +26,7 @@ const List<_TimerOpt> _timerOpts = [
   (label: 'End of chapter', duration: null,                   endOfChapter: true),
 ];
 
-const _speedOpts = [1.0, 1.1, 1.25, 1.5];
+const _commonSpeeds = [0.75, 1.0, 1.25, 1.5, 2.0, 2.5];
 
 // ── Screen ────────────────────────────────────────────────────────────────────
 
@@ -38,6 +40,7 @@ class PlayerScreen extends StatefulWidget {
 
 class _PlayerScreenState extends State<PlayerScreen> {
   double _speed = 1.0;
+  int _skipInterval = 30;
 
   // Sleep timer
   Timer? _sleepTimer;
@@ -61,6 +64,8 @@ class _PlayerScreenState extends State<PlayerScreen> {
     if (!_didInit) {
       _didInit = true;
       _audioHandler = AudioHandlerScope.of(context).audioHandler;
+      _speed = _audioHandler.player.speed;
+      _loadSkipInterval();
       _loadBook();
       _chapterSub = _audioHandler.player.currentIndexStream.listen((idx) {
         if (idx != null && idx != _lastChapterIndex) {
@@ -231,6 +236,169 @@ class _PlayerScreenState extends State<PlayerScreen> {
     );
 
     await discovery.stopDiscovery();
+  }
+
+  // ── Skip interval ────────────────────────────────────────────────────────────
+
+  Future<void> _loadSkipInterval() async {
+    final s = await locator<PreferencesService>().getSkipInterval();
+    _audioHandler.updateSkipInterval(s);
+    if (mounted) setState(() => _skipInterval = s);
+  }
+
+  IconData get _rewindIcon {
+    switch (_skipInterval) {
+      case 10: return Icons.replay_10_rounded;
+      case 30: return Icons.replay_30_rounded;
+      default: return Icons.replay_rounded;
+    }
+  }
+
+  IconData? get _forwardIcon {
+    switch (_skipInterval) {
+      case 10: return Icons.forward_10_rounded;
+      case 30: return Icons.forward_30_rounded;
+      default: return null; // use mirrored replay icon
+    }
+  }
+
+  // ── Speed ────────────────────────────────────────────────────────────────────
+
+  /// Formats a speed value as e.g. "1.0×", "1.25×", "0.75×".
+  static String _fmtSpeed(double s) {
+    final str = s.toStringAsFixed(2);
+    return '${str.endsWith('0') ? s.toStringAsFixed(1) : str}×';
+  }
+
+  void _showSpeedDialog() {
+    double tempSpeed = _speed;
+    final originalSpeed = _speed;
+
+    showDialog<bool>(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setDialogState) {
+          final theme = Theme.of(ctx);
+          return AlertDialog(
+            title: const Text('Playback speed'),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  _fmtSpeed(tempSpeed),
+                  style: theme.textTheme.headlineMedium
+                      ?.copyWith(fontWeight: FontWeight.bold),
+                ),
+                Slider(
+                  value: tempSpeed,
+                  min: 0.5,
+                  max: 3.0,
+                  divisions: 50, // 0.05× steps
+                  onChanged: (v) {
+                    setDialogState(() => tempSpeed = v);
+                    _audioHandler.setSpeed(v);
+                  },
+                ),
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 4,
+                  alignment: WrapAlignment.center,
+                  children: _commonSpeeds.map((s) {
+                    final active = (tempSpeed - s).abs() < 0.01;
+                    return ChoiceChip(
+                      label: Text(_fmtSpeed(s)),
+                      selected: active,
+                      onSelected: (_) {
+                        setDialogState(() => tempSpeed = s);
+                        _audioHandler.setSpeed(s);
+                      },
+                    );
+                  }).toList(),
+                ),
+              ],
+            ),
+            actions: [
+              TextButton(
+                onPressed: () {
+                  _audioHandler.setSpeed(originalSpeed);
+                  Navigator.pop(ctx, false);
+                },
+                child: const Text('Cancel'),
+              ),
+              TextButton(
+                onPressed: () => Navigator.pop(ctx, true),
+                child: const Text('Done'),
+              ),
+            ],
+          );
+        },
+      ),
+    ).then((confirmed) {
+      if (confirmed == true) {
+        setState(() => _speed = tempSpeed);
+      } else {
+        setState(() => _speed = originalSpeed);
+      }
+    });
+  }
+
+  // ── Custom sleep timer ────────────────────────────────────────────────────────
+
+  Future<void> _showCustomTimerDialog() async {
+    int minutes = 20;
+    final result = await showDialog<int>(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setDialogState) {
+          final theme = Theme.of(ctx);
+          return AlertDialog(
+            title: const Text('Custom sleep timer'),
+            content: Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                IconButton(
+                  icon: const Icon(Icons.remove_rounded),
+                  onPressed: minutes > 1
+                      ? () => setDialogState(() => minutes--)
+                      : null,
+                ),
+                SizedBox(
+                  width: 88,
+                  child: Text(
+                    '$minutes min',
+                    textAlign: TextAlign.center,
+                    style: theme.textTheme.headlineSmall,
+                  ),
+                ),
+                IconButton(
+                  icon: const Icon(Icons.add_rounded),
+                  onPressed: minutes < 180
+                      ? () => setDialogState(() => minutes++)
+                      : null,
+                ),
+              ],
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(ctx),
+                child: const Text('Cancel'),
+              ),
+              TextButton(
+                onPressed: () => Navigator.pop(ctx, minutes),
+                child: const Text('Set'),
+              ),
+            ],
+          );
+        },
+      ),
+    );
+    if (result != null) {
+      _setTimer((
+        label: '$result min',
+        duration: Duration(minutes: result),
+        endOfChapter: false,
+      ));
+    }
   }
 
   // ── Helpers ─────────────────────────────────────────────────────────────────
@@ -609,7 +777,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
           mainAxisAlignment: MainAxisAlignment.spaceEvenly,
           children: [
             _iconBtn(Icons.skip_previous_rounded, 34, _audioHandler.skipToPrevious),
-            _iconBtn(Icons.replay_30_rounded, 34, _audioHandler.rewind),
+            _iconBtn(_rewindIcon, 34, _audioHandler.rewind),
             // Central play/pause button
             GestureDetector(
               onTap: playing ? _audioHandler.pause : _audioHandler.play,
@@ -635,7 +803,16 @@ class _PlayerScreenState extends State<PlayerScreen> {
                 ),
               ),
             ),
-            _iconBtn(Icons.forward_30_rounded, 34, _audioHandler.fastForward),
+            _forwardIcon != null
+                ? _iconBtn(_forwardIcon!, 34, _audioHandler.fastForward)
+                : IconButton(
+                    iconSize: 34,
+                    icon: Transform.scale(
+                      scaleX: -1,
+                      child: const Icon(Icons.replay_rounded),
+                    ),
+                    onPressed: _audioHandler.fastForward,
+                  ),
             _iconBtn(Icons.skip_next_rounded, 34, _audioHandler.skipToNext),
           ],
         );
@@ -656,44 +833,39 @@ class _PlayerScreenState extends State<PlayerScreen> {
       mainAxisAlignment: MainAxisAlignment.spaceEvenly,
       children: [
         // Speed
-        PopupMenuButton<double>(
-          tooltip: 'Playback speed',
-          onSelected: (s) {
-            setState(() => _speed = s);
-            _audioHandler.setSpeed(s);
-          },
-          itemBuilder: (_) => _speedOpts
-              .map((s) => PopupMenuItem(
-                    value: s,
-                    child: Row(children: [
-                      if (s == _speed)
-                        Icon(Icons.check, size: 18,
-                            color: theme.colorScheme.primary)
-                      else
-                        const SizedBox(width: 18),
-                      const SizedBox(width: 8),
-                      Text('$s×'),
-                    ]),
-                  ))
-              .toList(),
+        GestureDetector(
+          onTap: _showSpeedDialog,
           child: _chip(
             icon: Icons.speed_rounded,
-            label: '$_speed×',
-            active: _speed != 1.0,
+            label: _fmtSpeed(_speed),
+            active: (_speed - 1.0).abs() > 0.001,
             theme: theme,
           ),
         ),
         // Sleep timer
         PopupMenuButton<int>(
           tooltip: 'Sleep timer',
-          onSelected: (i) => _setTimer(_timerOpts[i]),
-          itemBuilder: (_) => List.generate(
-            _timerOpts.length,
-            (i) => PopupMenuItem(
-              value: i,
-              child: Text(_timerOpts[i].label),
+          onSelected: (i) {
+            if (i == _timerOpts.length) {
+              _showCustomTimerDialog();
+            } else {
+              _setTimer(_timerOpts[i]);
+            }
+          },
+          itemBuilder: (_) => [
+            ...List.generate(
+              _timerOpts.length,
+              (i) => PopupMenuItem(
+                value: i,
+                child: Text(_timerOpts[i].label),
+              ),
             ),
-          ),
+            const PopupMenuDivider(),
+            PopupMenuItem(
+              value: _timerOpts.length,
+              child: const Text('Custom…'),
+            ),
+          ],
           child: _chip(
             icon: Icons.timer_rounded,
             label: _timerLabel,
