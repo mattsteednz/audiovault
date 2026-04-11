@@ -226,4 +226,23 @@ class MockPreferencesService extends _i1.Mock
         returnValue: _i3.Future<void>.value(),
         returnValueForMissingStub: _i3.Future<void>.value(),
       ) as _i3.Future<void>);
+
+  @override
+  _i3.Future<int> getSkipInterval() => (super.noSuchMethod(
+        Invocation.method(
+          #getSkipInterval,
+          [],
+        ),
+        returnValue: _i3.Future<int>.value(0),
+      ) as _i3.Future<int>);
+
+  @override
+  _i3.Future<void> setSkipInterval(int? seconds) => (super.noSuchMethod(
+        Invocation.method(
+          #setSkipInterval,
+          [seconds],
+        ),
+        returnValue: _i3.Future<void>.value(),
+        returnValueForMissingStub: _i3.Future<void>.value(),
+      ) as _i3.Future<void>);
 }

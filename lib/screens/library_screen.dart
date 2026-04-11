@@ -30,6 +30,22 @@ List<Audiobook> filterBooks(List<Audiobook> books, String query) {
   }).toList();
 }
 
+/// Merges [cachedCovers] (path → cover file path) into [books].
+///
+/// Only called when enrichment is enabled; pass an empty map to skip.
+/// Books that already have embedded artwork are left unchanged.
+List<Audiobook> applyCachedCovers(
+  List<Audiobook> books,
+  Map<String, String> cachedCovers,
+) {
+  if (cachedCovers.isEmpty) return books;
+  return books.map((b) {
+    if (b.coverImagePath != null || b.coverImageBytes != null) return b;
+    final cached = cachedCovers[b.path];
+    return cached != null ? b.copyWith(coverImagePath: cached) : b;
+  }).toList();
+}
+
 class LibraryScreen extends StatefulWidget {
   const LibraryScreen({super.key});
 
@@ -115,24 +131,20 @@ class _LibraryScreenState extends State<LibraryScreen> {
         return;
       }
       final books = await locator<ScannerService>().scanFolder(path);
+      final enrichEnabled = await locator<PreferencesService>().getMetadataEnrichment();
 
-      // Apply any covers already fetched in a previous session.
-      final cachedCovers = await locator<EnrichmentService>().getAllEnrichedCovers();
-      _rawBooks = cachedCovers.isEmpty
-          ? books
-          : books.map((b) {
-              if (b.coverImagePath != null || b.coverImageBytes != null) {
-                return b;
-              }
-              final cached = cachedCovers[b.path];
-              return cached != null ? b.copyWith(coverImagePath: cached) : b;
-            }).toList();
+      // Apply cached enriched covers only when enrichment is enabled.
+      // When disabled, treat each scan as a cache flush and show only
+      // embedded artwork (or the default icon).
+      final cachedCovers = enrichEnabled
+          ? await locator<EnrichmentService>().getAllEnrichedCovers()
+          : <String, String>{};
+      _rawBooks = applyCachedCovers(books, cachedCovers);
 
       await _applySort();
       setState(() => _scanning = false);
 
       // Start background enrichment for books missing covers.
-      final enrichEnabled = await locator<PreferencesService>().getMetadataEnrichment();
       if (enrichEnabled) {
         unawaited(locator<EnrichmentService>().enqueueBooks(_rawBooks!));
       }
@@ -295,13 +307,12 @@ class _LibraryScreenState extends State<LibraryScreen> {
                 ),
                 IconButton(
                   icon: const Icon(Icons.settings_rounded),
-                  onPressed: () async {
-                    final folderChanged = await Navigator.push<bool>(
-                      context,
-                      MaterialPageRoute(builder: (_) => const SettingsScreen()),
-                    );
-                    if (folderChanged == true) _scan();
-                  },
+                  onPressed: () => Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) => SettingsScreen(onFolderChanged: _scan),
+                    ),
+                  ),
                   tooltip: 'Settings',
                 ),
               ],

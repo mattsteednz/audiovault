@@ -9,9 +9,11 @@ import '../services/telemetry_service.dart';
 import '../locator.dart';
 import 'about_screen.dart';
 
-/// Returns [true] if the audiobooks folder was changed (triggers a rescan).
 class SettingsScreen extends StatefulWidget {
-  const SettingsScreen({super.key});
+  /// Called immediately when the audiobooks folder is changed.
+  final VoidCallback? onFolderChanged;
+
+  const SettingsScreen({super.key, this.onFolderChanged});
 
   @override
   State<SettingsScreen> createState() => _SettingsScreenState();
@@ -21,7 +23,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
   String? _folderPath;
   bool _telemetryEnabled = false;
   bool _metadataEnrichment = true;
-  bool _folderChanged = false;
   bool _pickingFolder = false;
   String _themeMode = 'system';
   bool _autoRewind = true;
@@ -69,10 +70,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
       );
       if (result != null && result != _folderPath) {
         await locator<PreferencesService>().setLibraryPath(result);
-        setState(() {
-          _folderPath = result;
-          _folderChanged = true;
-        });
+        setState(() => _folderPath = result);
+        widget.onFolderChanged?.call();
       }
     } finally {
       setState(() => _pickingFolder = false);
@@ -177,7 +176,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
       appBar: AppBar(
         title: const Text('Settings'),
         leading: BackButton(
-          onPressed: () => Navigator.pop(context, _folderChanged),
+          onPressed: () => Navigator.pop(context),
         ),
       ),
       body: ListView(
