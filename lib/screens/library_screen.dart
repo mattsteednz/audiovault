@@ -18,6 +18,18 @@ import '../locator.dart';
 
 enum _ViewMode { grid, list }
 
+/// Returns books from [books] whose title or author contains [query]
+/// (case-insensitive). Returns [books] unchanged when [query] is empty.
+List<Audiobook> filterBooks(List<Audiobook> books, String query) {
+  if (query.isEmpty) return books;
+  final q = query.toLowerCase();
+  return books.where((b) {
+    if (b.title.toLowerCase().contains(q)) return true;
+    final author = b.author;
+    return author != null && author.toLowerCase().contains(q);
+  }).toList();
+}
+
 class LibraryScreen extends StatefulWidget {
   const LibraryScreen({super.key});
 
@@ -31,6 +43,11 @@ class _LibraryScreenState extends State<LibraryScreen> {
   String? _error;
   bool _scanning = false;
   _ViewMode _viewMode = _ViewMode.grid;
+
+  // Search state.
+  bool _isSearching = false;
+  String _searchQuery = '';
+  final TextEditingController _searchController = TextEditingController();
 
   // Currently-active book tracking (for badge).
   String? _activePath;
@@ -65,8 +82,21 @@ class _LibraryScreenState extends State<LibraryScreen> {
   void dispose() {
     _playbackSub?.cancel();
     _enrichSub?.cancel();
+    _searchController.dispose();
     super.dispose();
   }
+
+  void _openSearch() => setState(() => _isSearching = true);
+
+  void _closeSearch() {
+    _searchController.clear();
+    setState(() {
+      _isSearching = false;
+      _searchQuery = '';
+    });
+  }
+
+  List<Audiobook> get _displayedBooks => filterBooks(_books ?? [], _searchQuery);
 
   // ── Scan + sort ─────────────────────────────────────────────────────────────
 
@@ -195,47 +225,86 @@ class _LibraryScreenState extends State<LibraryScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('My Library'),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.history_rounded),
-            onPressed: () {
-              final books = _rawBooks;
-              if (books != null) {
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                      builder: (_) => HistoryScreen(books: books)),
-                );
-              }
-            },
-            tooltip: 'History',
-          ),
-          IconButton(
-            icon: Icon(_viewMode == _ViewMode.grid
-                ? Icons.view_list_rounded
-                : Icons.grid_view_rounded),
-            onPressed: () => setState(() => _viewMode =
-                _viewMode == _ViewMode.grid ? _ViewMode.list : _ViewMode.grid),
-            tooltip: _viewMode == _ViewMode.grid ? 'List view' : 'Grid view',
-          ),
-          IconButton(
-            icon: const Icon(Icons.refresh_rounded),
-            onPressed: _scanning ? null : _scan,
-            tooltip: 'Rescan',
-          ),
-          IconButton(
-            icon: const Icon(Icons.settings_rounded),
-            onPressed: () async {
-              final folderChanged = await Navigator.push<bool>(
-                context,
-                MaterialPageRoute(builder: (_) => const SettingsScreen()),
-              );
-              if (folderChanged == true) _scan();
-            },
-            tooltip: 'Settings',
-          ),
-        ],
+        leading: _isSearching
+            ? IconButton(
+                icon: const Icon(Icons.arrow_back_rounded),
+                onPressed: _closeSearch,
+                tooltip: 'Cancel search',
+              )
+            : null,
+        title: _isSearching
+            ? TextField(
+                controller: _searchController,
+                autofocus: true,
+                decoration: const InputDecoration(
+                  hintText: 'Search by title or author…',
+                  border: InputBorder.none,
+                ),
+                onChanged: (v) => setState(() => _searchQuery = v),
+              )
+            : const Text('My Library'),
+        actions: _isSearching
+            ? [
+                if (_searchQuery.isNotEmpty)
+                  IconButton(
+                    icon: const Icon(Icons.clear_rounded),
+                    onPressed: () {
+                      _searchController.clear();
+                      setState(() => _searchQuery = '');
+                    },
+                    tooltip: 'Clear',
+                  ),
+              ]
+            : [
+                IconButton(
+                  icon: const Icon(Icons.search_rounded),
+                  onPressed: _books != null && _books!.isNotEmpty
+                      ? _openSearch
+                      : null,
+                  tooltip: 'Search',
+                ),
+                IconButton(
+                  icon: const Icon(Icons.history_rounded),
+                  onPressed: () {
+                    final books = _rawBooks;
+                    if (books != null) {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                            builder: (_) => HistoryScreen(books: books)),
+                      );
+                    }
+                  },
+                  tooltip: 'History',
+                ),
+                IconButton(
+                  icon: Icon(_viewMode == _ViewMode.grid
+                      ? Icons.view_list_rounded
+                      : Icons.grid_view_rounded),
+                  onPressed: () => setState(() => _viewMode =
+                      _viewMode == _ViewMode.grid
+                          ? _ViewMode.list
+                          : _ViewMode.grid),
+                  tooltip:
+                      _viewMode == _ViewMode.grid ? 'List view' : 'Grid view',
+                ),
+                IconButton(
+                  icon: const Icon(Icons.refresh_rounded),
+                  onPressed: _scanning ? null : _scan,
+                  tooltip: 'Rescan',
+                ),
+                IconButton(
+                  icon: const Icon(Icons.settings_rounded),
+                  onPressed: () async {
+                    final folderChanged = await Navigator.push<bool>(
+                      context,
+                      MaterialPageRoute(builder: (_) => const SettingsScreen()),
+                    );
+                    if (folderChanged == true) _scan();
+                  },
+                  tooltip: 'Settings',
+                ),
+              ],
       ),
       body: Column(
         children: [
@@ -271,9 +340,9 @@ class _LibraryScreenState extends State<LibraryScreen> {
       );
     }
 
-    final books = _books ?? [];
+    final allBooks = _books ?? [];
 
-    if (books.isEmpty) {
+    if (allBooks.isEmpty) {
       return const Center(
         child: Padding(
           padding: EdgeInsets.all(32),
@@ -285,6 +354,28 @@ class _LibraryScreenState extends State<LibraryScreen> {
               SizedBox(height: 16),
               Text(
                 'No audiobooks found.\n\nMake sure your folder contains subfolders with audio files.',
+                textAlign: TextAlign.center,
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+
+    final books = _displayedBooks;
+
+    if (books.isEmpty) {
+      return Center(
+        child: Padding(
+          padding: const EdgeInsets.all(32),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Icon(Icons.search_off_rounded,
+                  size: 64, color: Colors.grey),
+              const SizedBox(height: 16),
+              Text(
+                'No results for "$_searchQuery".',
                 textAlign: TextAlign.center,
               ),
             ],
