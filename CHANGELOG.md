@@ -6,6 +6,14 @@ All notable changes to AudioVault are documented here.
 
 ---
 
+## [1.0.4] — 2026-04-11
+
+### Added
+
+- **Library search** — Tap the search icon in the library AppBar to filter books by title or author (case-insensitive, partial match). A clear button appears while typing; back arrow dismisses search and resets the list.
+
+---
+
 ## [1.0.3] — 2026-04-09
 
 ### Added
