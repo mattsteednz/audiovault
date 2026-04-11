@@ -6,30 +6,23 @@ All notable changes to AudioVault are documented here.
 
 ---
 
-## [1.0.6] — 2026-04-11
-
-### Changed
-
-- **Auto-rescan on folder change** — Changing the audiobooks folder in Settings now triggers a library rescan immediately, without needing to navigate back first.
-- **Enrichment cache flush on rescan** — When "Get missing covers & metadata" is disabled, rescanning the library ignores previously cached enriched covers and shows only embedded artwork (or the default icon). Re-enabling the setting restores cached covers on the next scan.
-
----
-
-## [1.0.5] — 2026-04-11
+## [1.1.0] — 2026-04-11
 
 ### Added
 
+- **Library search** — Tap the search icon in the library AppBar to filter books by title or author (case-insensitive, partial match). Clear button appears while typing; back arrow dismisses search and resets the list.
 - **Fine-grained playback speed** — Speed chip opens a dialog with a 0.5×–3.0× slider (0.05× steps) and quick-select chips for 0.75×, 1.0×, 1.25×, 1.5×, 2.0×, 2.5×. Live preview while dragging; Cancel reverts.
 - **Custom skip interval** — New "Skip interval" setting (10 / 15 / 30 / 45 / 60 s). Rewind and fast-forward buttons update to match, including notification controls.
 - **Custom sleep timer** — "Custom…" option at the bottom of the sleep timer menu opens a 1–180 minute picker.
 
----
+### Fixed
 
-## [1.0.4] — 2026-04-11
+- **Player times blank on reopen** — Reopening the player for a paused book now shows the correct elapsed time, remaining time, and scrubber position immediately (previously all showed 0:00 until playback resumed).
 
-### Added
+### Changed
 
-- **Library search** — Tap the search icon in the library AppBar to filter books by title or author (case-insensitive, partial match). A clear button appears while typing; back arrow dismisses search and resets the list.
+- **Auto-rescan on folder change** — Changing the audiobooks folder in Settings triggers a library rescan immediately, without needing to navigate back first.
+- **Enrichment cache flush on rescan** — When "Get missing covers & metadata" is disabled, rescanning ignores previously cached enriched covers and reverts books to embedded artwork or the default icon. Re-enabling the setting restores cached covers on the next scan.
 
 ---
 
