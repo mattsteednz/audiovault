@@ -511,10 +511,12 @@ class _PlayerScreenState extends State<PlayerScreen> {
     final isM4b = book.chapters.isNotEmpty;
     return StreamBuilder<Duration?>(
       stream: _audioHandler.effectiveDurationStream,
+      initialData: _audioHandler.player.duration,
       builder: (_, durSnap) {
         final dur = durSnap.data ?? Duration.zero;
         return StreamBuilder<Duration>(
           stream: _audioHandler.effectivePositionStream,
+          initialData: _audioHandler.player.position,
           builder: (_, posSnap) {
             final pos = posSnap.data ?? Duration.zero;
             final displayed = _dragging ? _dragPosition : pos;
