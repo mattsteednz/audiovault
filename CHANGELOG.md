@@ -6,6 +6,16 @@ All notable changes to AudioVault are documented here.
 
 ---
 
+## [1.0.5] — 2026-04-11
+
+### Added
+
+- **Fine-grained playback speed** — Speed chip opens a dialog with a 0.5×–3.0× slider (0.05× steps) and quick-select chips for 0.75×, 1.0×, 1.25×, 1.5×, 2.0×, 2.5×. Live preview while dragging; Cancel reverts.
+- **Custom skip interval** — New "Skip interval" setting (10 / 15 / 30 / 45 / 60 s). Rewind and fast-forward buttons update to match, including notification controls.
+- **Custom sleep timer** — "Custom…" option at the bottom of the sleep timer menu opens a 1–180 minute picker.
+
+---
+
 ## [1.0.4] — 2026-04-11
 
 ### Added
