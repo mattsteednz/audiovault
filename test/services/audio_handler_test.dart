@@ -25,6 +25,7 @@ void main() {
       mockPreferencesService = MockPreferencesService();
       
       when(mockPreferencesService.getAutoRewind()).thenAnswer((_) async => true);
+      when(mockPreferencesService.getSkipInterval()).thenAnswer((_) async => 30);
 
       locator.registerLazySingleton<PositionService>(() => mockPositionService);
       locator.registerLazySingleton<PreferencesService>(() => mockPreferencesService);

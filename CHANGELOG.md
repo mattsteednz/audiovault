@@ -6,6 +6,15 @@ All notable changes to AudioVault are documented here.
 
 ---
 
+## [1.0.6] — 2026-04-11
+
+### Changed
+
+- **Auto-rescan on folder change** — Changing the audiobooks folder in Settings now triggers a library rescan immediately, without needing to navigate back first.
+- **Enrichment cache flush on rescan** — When "Get missing covers & metadata" is disabled, rescanning the library ignores previously cached enriched covers and shows only embedded artwork (or the default icon). Re-enabling the setting restores cached covers on the next scan.
+
+---
+
 ## [1.0.5] — 2026-04-11
 
 ### Added
