@@ -6,8 +6,28 @@ import 'package:flutter/foundation.dart';
 import 'package:path/path.dart' as p;
 import '../models/audiobook.dart';
 
+/// Parsed result from a `.cue` sheet file.
+class _CueSheet {
+  final String? title;
+  final String? author;
+
+  /// Resolved, on-disk audio file paths in cue-sheet order.
+  final List<String> audioFiles;
+
+  /// Chapter list — only populated for single-file cue sheets.
+  /// Multi-file cue sheets leave this empty (each file is its own chapter).
+  final List<Chapter> chapters;
+
+  const _CueSheet({
+    this.title,
+    this.author,
+    required this.audioFiles,
+    required this.chapters,
+  });
+}
+
 class ScannerService {
-  static const _audioExtensions = {'.mp3', '.m4a', '.aac', '.m4b'};
+  static const _audioExtensions = {'.mp3', '.m4a', '.aac', '.m4b', '.flac', '.ogg'};
   static const _imageExtensions = {'.jpg', '.jpeg', '.png', '.webp'};
   // Audible formats — detected but not playable due to DRM.
   static const _drmExtensions = {'.aax', '.aa'};
@@ -73,6 +93,30 @@ class ScannerService {
       ..sort(_naturalSort);
 
     final imageFiles = allFiles.where((f) => _isImage(f.path)).toList();
+
+    // Parse .cue sheet if one exists (takes precedence over natural-sort order).
+    _CueSheet? cueSheet;
+    final cueFiles = allFiles
+        .where((f) => p.extension(f.path).toLowerCase() == '.cue')
+        .toList();
+    if (cueFiles.isNotEmpty) {
+      try {
+        final content = await cueFiles.first.readAsString();
+        cueSheet = _parseCueSheet(content, dir.path);
+        _log('    CUE: ${cueSheet?.audioFiles.length ?? 0} file(s), '
+            '${cueSheet?.chapters.length ?? 0} chapter(s)');
+      } catch (e) {
+        _log('    CUE parse error: $e');
+      }
+    }
+
+    // If the .cue sheet resolved audio files, use that ordered list; otherwise
+    // fall back to the naturally-sorted files found on disk.
+    if (cueSheet != null && cueSheet.audioFiles.isNotEmpty) {
+      audioFiles
+        ..clear()
+        ..addAll(cueSheet.audioFiles);
+    }
 
     _log('    Audio (${audioFiles.length}): ${audioFiles.map(p.basename).join(', ')}');
     _log('    Images(${imageFiles.length}): ${imageFiles.map((f) => p.basename(f.path)).join(', ')}');
@@ -147,12 +191,19 @@ class ScannerService {
       }
     }
 
-    // Parse embedded chapters for single M4B files.
+    // .cue metadata fills in what embedded tags didn't provide.
+    if (cueSheet?.title != null && title == name) title = cueSheet!.title!;
+    if (cueSheet?.author != null && author == null) author = cueSheet!.author;
+
+    // Chapter parsing: embedded M4B takes priority; .cue is second choice.
     List<Chapter> chapters = const [];
     if (audioFiles.length == 1 &&
         p.extension(audioFiles.first).toLowerCase() == '.m4b') {
       chapters = await _parseM4bChapters(audioFiles.first);
       _log('    M4B chapters: ${chapters.length}');
+    } else if (cueSheet != null && cueSheet.chapters.isNotEmpty) {
+      chapters = cueSheet.chapters;
+      _log('    CUE chapters: ${chapters.length}');
     }
 
     final duration = totalDuration == Duration.zero ? null : totalDuration;
@@ -514,6 +565,117 @@ class ScannerService {
       if (cmp != 0) return cmp;
     }
     return segA.length.compareTo(segB.length);
+  }
+
+  // ── CUE sheet parser ─────────────────────────────────────────────────────
+  //
+  // Parses a Red Book / CD-DA cue sheet into a [_CueSheet].
+  //
+  // Supported subset:
+  //   FILE "name" <type>   – audio file reference (quoted or unquoted)
+  //   PERFORMER "..."      – global author (ignored at track level)
+  //   TITLE "..."          – global title or per-track chapter name
+  //   TRACK nn AUDIO       – track declaration
+  //   INDEX 01 MM:SS:FF    – chapter start (75 frames/sec)
+  //
+  // Multi-file cue sheets (more than one FILE directive) are supported for
+  // ordering and metadata, but chapters are only extracted for single-file
+  // sheets because track timestamps are relative to each file's start.
+
+  _CueSheet? _parseCueSheet(String content, String folderPath) {
+    String? globalTitle;
+    String? globalPerformer;
+
+    // Accumulate per-FILE sections.
+    final fileSections = <({String path, List<Chapter> chapters})>[];
+    String? currentFilePath; // null if file was missing from disk
+    final pendingChapters = <Chapter>[];
+    String? pendingTrackTitle;
+
+    void commitFile() {
+      if (currentFilePath != null) {
+        fileSections.add((
+          path: currentFilePath!,
+          chapters: List.of(pendingChapters),
+        ));
+      }
+      pendingChapters.clear();
+      currentFilePath = null;
+      pendingTrackTitle = null;
+    }
+
+    for (var line in content.split('\n')) {
+      line = line.trim();
+      if (line.isEmpty || line.startsWith('REM')) continue;
+
+      if (line.startsWith('FILE ')) {
+        commitFile();
+        final match = RegExp(r'^FILE\s+"(.+?)"\s+\S+').firstMatch(line) ??
+            RegExp(r'^FILE\s+(\S+)\s+\S+').firstMatch(line);
+        if (match == null) continue;
+        // Normalise path separators for the current platform.
+        final filename = match.group(1)!.replaceAll('\\', p.separator);
+        final resolved = p.join(folderPath, filename);
+        currentFilePath = File(resolved).existsSync() ? resolved : null;
+        pendingTrackTitle = null;
+      } else if (line.startsWith('TITLE ')) {
+        final title = _cueUnquote(line.substring(6));
+        if (currentFilePath == null && fileSections.isEmpty) {
+          globalTitle = title;
+        } else {
+          pendingTrackTitle = title;
+        }
+      } else if (line.startsWith('PERFORMER ')) {
+        final performer = _cueUnquote(line.substring(10));
+        if (currentFilePath == null && fileSections.isEmpty) {
+          globalPerformer = performer;
+        }
+      } else if (line.startsWith('INDEX 01 ') && pendingTrackTitle != null) {
+        final dur = _parseCueTime(line.substring(9).trim());
+        if (dur != null && currentFilePath != null) {
+          pendingChapters.add(Chapter(title: pendingTrackTitle!, start: dur));
+        }
+        pendingTrackTitle = null; // consumed
+      }
+    }
+    commitFile();
+
+    if (fileSections.isEmpty) return null;
+
+    final audioPaths = fileSections.map((s) => s.path).toList();
+
+    // Only expose chapters for single-file sheets; multi-file track timestamps
+    // are relative to their respective file — not yet supported.
+    final chapters = fileSections.length == 1
+        ? fileSections.first.chapters
+        : const <Chapter>[];
+
+    return _CueSheet(
+      title: globalTitle,
+      author: globalPerformer,
+      audioFiles: audioPaths,
+      chapters: chapters,
+    );
+  }
+
+  /// Strips surrounding quotes from a cue-sheet string value.
+  String _cueUnquote(String s) {
+    s = s.trim();
+    if (s.length >= 2 && s.startsWith('"') && s.endsWith('"')) {
+      return s.substring(1, s.length - 1);
+    }
+    return s;
+  }
+
+  /// Parses a CUE timestamp `MM:SS:FF` (75 frames/sec) to [Duration].
+  Duration? _parseCueTime(String s) {
+    final parts = s.split(':');
+    if (parts.length != 3) return null;
+    final mm = int.tryParse(parts[0]);
+    final ss = int.tryParse(parts[1]);
+    final ff = int.tryParse(parts[2]);
+    if (mm == null || ss == null || ff == null) return null;
+    return Duration(milliseconds: mm * 60000 + ss * 1000 + ff * 1000 ~/ 75);
   }
 
   bool _isAudio(String path) => _audioExtensions.contains(p.extension(path).toLowerCase());

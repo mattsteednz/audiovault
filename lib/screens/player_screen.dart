@@ -502,6 +502,13 @@ class _PlayerScreenState extends State<PlayerScreen> {
                           count: chapCount,
                           currentIndex: _currentChapterIndex,
                           title: (i) => book.chapters[i].title,
+                          duration: (i) {
+                            final start = book.chapters[i].start;
+                            final end = i + 1 < book.chapters.length
+                                ? book.chapters[i + 1].start
+                                : (book.duration ?? Duration.zero);
+                            return end > start ? end - start : null;
+                          },
                           onTap: (i) {
                             _audioHandler.seek(book.chapters[i].start);
                             Navigator.of(context).pop();
@@ -513,6 +520,9 @@ class _PlayerScreenState extends State<PlayerScreen> {
                           currentIndex: _currentChapterIndex,
                           title: (i) => p.basenameWithoutExtension(
                               book.audioFiles[i]),
+                          duration: (i) => i < book.chapterDurations.length
+                              ? book.chapterDurations[i]
+                              : null,
                           onTap: (i) {
                             _audioHandler.player
                                 .seek(Duration.zero, index: i);
@@ -534,6 +544,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
     required int currentIndex,
     required String Function(int) title,
     required void Function(int) onTap,
+    Duration? Function(int)? duration,
   }) {
     final theme = Theme.of(context);
     return ListView.builder(
@@ -541,6 +552,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
       itemCount: count,
       itemBuilder: (ctx, i) {
         final isCurrent = i == currentIndex;
+        final dur = duration?.call(i);
         return ListTile(
           leading: isCurrent
               ? Icon(Icons.volume_up_rounded,
@@ -560,6 +572,14 @@ class _PlayerScreenState extends State<PlayerScreen> {
             maxLines: 2,
             overflow: TextOverflow.ellipsis,
           ),
+          trailing: dur != null && dur > Duration.zero
+              ? Text(
+                  _fmtHM(dur),
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: theme.colorScheme.onSurface.withValues(alpha: 0.55),
+                  ),
+                )
+              : null,
           onTap: () => onTap(i),
         );
       },
