@@ -71,7 +71,7 @@ All Firebase calls go through `TelemetryService`. Firebase init is wrapped in tr
 
 ## Key Dependency Notes
 
-- **`just_audio ^0.9.0`** — always pass `initialPosition: Duration.zero` to `setAudioSource()` to prevent M4B edit-list offsets from skipping the beginning
+- **`just_audio ^0.10.0`** — use `setAudioSources()` (not the deprecated `ConcatenatingAudioSource`). Pass `initialPosition: saved?.position` (nullable) — just_audio 0.10 handles M4B edit-list offsets natively, so no need to force `Duration.zero`
 - **`audio_service ^0.18.0`** — service class name changed from `AudioServiceBackground` to `AudioService` in this version
 - **`audio_metadata_reader ^1.4.2`** — use only `album` tag for book title (never `title` tag, which contains track/chapter name)
 - **`sqflite ^2.3.0`** — DB file is `audiovault_positions.db` in the app's documents directory
@@ -104,3 +104,58 @@ This replaces both placeholder config files automatically.
 
 - Remote: `https://github.com/mattsteednz/audiovault`
 - Default branch: `main`
+
+## Git Workflow for Claude Code
+
+**TL;DR:** Feature branch → develop → commit → push → squash merge to main → delete branch. Bugs: critical → merge to main directly; related to feature → fix in feature branch; standalone → create `fix/` branch.
+
+### Feature Implementation
+
+```bash
+# Create branch from PRD
+git checkout -b feature/prd-{number}-{description}
+
+# Develop with frequent commits (type(scope): message)
+git commit -m "feat(scope): Description"
+
+# Push when complete & tested
+git push origin feature/prd-{number}-{description}
+
+# Squash merge to main
+git checkout main && git pull origin main
+git merge --squash feature/prd-{number}-{description}
+git commit -m "feat(PRD-{number}): Feature title"
+git branch -d feature/prd-{number}-{description}
+git push origin --delete feature/prd-{number}-{description}
+```
+
+### Bug Fixes
+
+| Bug Type | Branch | Merge |
+|----------|--------|-------|
+| **Critical/Hotfix** | Merge directly to main | `git commit -m "fix: Description"` + push |
+| **Feature-related** | Fix in feature branch before merge | Included in feature squash merge |
+| **Standalone** | `fix/{description}` | Squash merge like a feature |
+
+### Conventions
+
+- **Branch names:** `feature/prd-5-google-cast` or `fix/audio-stutter`
+- **Commits:** `feat()`, `fix()`, `refactor()`, `docs()`, `test()`
+- **Main commits:** Always reference PRD: `feat(PRD-5): Add Google Cast`
+- **Always pull before merging** to avoid conflicts
+- **Before every merge to main:** update `CHANGELOG.md` and `README.md` to reflect the changes being merged
+- **Always run tests locally before pushing:** `flutter test`
+
+### Example
+
+```bash
+git checkout -b feature/prd-7-metadata-enrichment
+git commit -m "feat(metadata): Fetch OpenLibrary covers"
+git commit -m "fix(metadata): Handle missing URLs"
+git push origin feature/prd-7-metadata-enrichment
+git checkout main && git pull origin main
+git merge --squash feature/prd-7-metadata-enrichment
+git commit -m "feat(PRD-7): Add metadata enrichment"
+git branch -d feature/prd-7-metadata-enrichment
+git push origin --delete feature/prd-7-metadata-enrichment
+```

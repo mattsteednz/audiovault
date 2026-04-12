@@ -387,7 +387,7 @@ class AudioVaultHandler extends BaseAudioHandler {
       await _player.setAudioSources(
         sources,
         initialIndex: saved?.chapterIndex ?? 0,
-        initialPosition: saved?.position ?? Duration.zero,
+        initialPosition: saved?.position,
       );
     } catch (e) {
       _book = null;

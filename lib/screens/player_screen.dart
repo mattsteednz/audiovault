@@ -51,9 +51,14 @@ class _PlayerScreenState extends State<PlayerScreen> {
   bool _dragging = false;
   Duration _dragPosition = Duration.zero;
 
-  // Chapter tracking for "end of chapter" timer
-  int _lastChapterIndex = 0;
+  // Chapter tracking — used for both UI display and "end of chapter" timer.
+  // _currentChapterIndex drives the chapter label and chapter list highlight.
+  // It is set synchronously after loadBook() completes (not from player.position
+  // at build-time, which can be transiently zero during setAudioSources).
+  int _currentChapterIndex = 0;
+  int _lastChapterIndex = 0; // shadow copy used only by the sleep-timer logic
   StreamSubscription<int?>? _chapterSub;
+  StreamSubscription<Duration>? _posSub; // M4B: tracks chapter changes via position
 
   late final AudioVaultHandler _audioHandler;
   bool _didInit = false;
@@ -67,8 +72,17 @@ class _PlayerScreenState extends State<PlayerScreen> {
       _speed = _audioHandler.player.speed;
       _loadSkipInterval();
       _loadBook();
+      // currentIndexStream fires when the active track changes.
+      // For M4B books the index is always 0 (single file), so we must NOT
+      // use it to drive _currentChapterIndex — _posSub handles that instead.
+      // For multi-file books there are no embedded chapters, so the track
+      // index IS the chapter index and _posSub is not subscribed.
       _chapterSub = _audioHandler.player.currentIndexStream.listen((idx) {
-        if (idx != null && idx != _lastChapterIndex) {
+        if (idx == null) return;
+        if (widget.book.chapters.isEmpty && idx != _currentChapterIndex) {
+          setState(() => _currentChapterIndex = idx);
+        }
+        if (idx != _lastChapterIndex) {
           if (_stopAtChapterEnd) {
             _audioHandler.pause();
             _cancelTimer();
@@ -76,19 +90,42 @@ class _PlayerScreenState extends State<PlayerScreen> {
           setState(() => _lastChapterIndex = idx);
         }
       });
+
+      // M4B: derive chapter from position stream, but only setState when
+      // the chapter index actually changes (avoids rebuilds every 200 ms).
+      if (widget.book.chapters.isNotEmpty) {
+        _posSub = _audioHandler.effectivePositionStream.listen((pos) {
+          if (!mounted) return;
+          final idx = widget.book.chapterIndexAt(pos);
+          if (idx != _currentChapterIndex) {
+            setState(() => _currentChapterIndex = idx);
+          }
+        });
+      }
     }
   }
 
   Future<void> _loadBook() async {
     final isNew = _audioHandler.currentBook?.path != widget.book.path;
-    if (isNew) setState(() => _lastChapterIndex = 0);
+    if (isNew) setState(() { _lastChapterIndex = 0; _currentChapterIndex = 0; });
     await _audioHandler.loadBook(widget.book);
+    // loadBook has now positioned the player (either restored from DB or left
+    // in place for the same book). Read the correct chapter index now and push
+    // it to state — this is the first reliable moment to do so.
+    if (mounted) {
+      final pos = _audioHandler.player.position;
+      final idx = widget.book.chapters.isNotEmpty
+          ? widget.book.chapterIndexAt(pos)
+          : (_audioHandler.player.currentIndex ?? 0);
+      setState(() => _currentChapterIndex = idx);
+    }
     if (isNew) _audioHandler.play();
   }
 
   @override
   void dispose() {
     _chapterSub?.cancel();
+    _posSub?.cancel();
     _sleepTimer?.cancel();
     super.dispose();
   }
@@ -455,41 +492,31 @@ class _PlayerScreenState extends State<PlayerScreen> {
                   ),
                 ),
                 Expanded(
+                  // The chapter list is a StatefulWidget-scoped sheet, so it
+                  // can't subscribe to streams itself. We pass _currentChapterIndex
+                  // from state (which is already live-updated) and rebuild the
+                  // sheet via setState whenever the chapter changes.
                   child: isM4b
-                      ? StreamBuilder<Duration>(
-                          stream: _audioHandler.effectivePositionStream,
-                          builder: (ctx, snap) {
-                            final pos = snap.data ?? Duration.zero;
-                            final currentIdx =
-                                book.chapterIndexAt(pos);
-                            return _chapterListView(
-                              scrollCtrl: scrollCtrl,
-                              count: chapCount,
-                              currentIndex: currentIdx,
-                              title: (i) => book.chapters[i].title,
-                              onTap: (i) {
-                                _audioHandler.seek(book.chapters[i].start);
-                                Navigator.of(ctx).pop();
-                              },
-                            );
+                      ? _chapterListView(
+                          scrollCtrl: scrollCtrl,
+                          count: chapCount,
+                          currentIndex: _currentChapterIndex,
+                          title: (i) => book.chapters[i].title,
+                          onTap: (i) {
+                            _audioHandler.seek(book.chapters[i].start);
+                            Navigator.of(context).pop();
                           },
                         )
-                      : StreamBuilder<int?>(
-                          stream: _audioHandler.player.currentIndexStream,
-                          builder: (ctx, snap) {
-                            final currentIdx = snap.data ?? 0;
-                            return _chapterListView(
-                              scrollCtrl: scrollCtrl,
-                              count: chapCount,
-                              currentIndex: currentIdx,
-                              title: (i) => p.basenameWithoutExtension(
-                                  book.audioFiles[i]),
-                              onTap: (i) {
-                                _audioHandler.player
-                                    .seek(Duration.zero, index: i);
-                                Navigator.of(ctx).pop();
-                              },
-                            );
+                      : _chapterListView(
+                          scrollCtrl: scrollCtrl,
+                          count: chapCount,
+                          currentIndex: _currentChapterIndex,
+                          title: (i) => p.basenameWithoutExtension(
+                              book.audioFiles[i]),
+                          onTap: (i) {
+                            _audioHandler.player
+                                .seek(Duration.zero, index: i);
+                            Navigator.of(context).pop();
                           },
                         ),
                 ),
@@ -653,22 +680,11 @@ class _PlayerScreenState extends State<PlayerScreen> {
       ],
       if (hasChapters) ...[
         const SizedBox(height: 4),
-        if (isM4b)
-          // For M4B: derive current chapter from playback position
-          StreamBuilder<Duration>(
-            stream: _audioHandler.effectivePositionStream,
-            builder: (_, snap) {
-              final pos = snap.data ?? Duration.zero;
-              final idx = book.chapterIndexAt(pos);
-              return chapterLabel(idx);
-            },
-          )
-        else
-          // For multi-file: use just_audio's current index
-          StreamBuilder<int?>(
-            stream: _audioHandler.player.currentIndexStream,
-            builder: (_, snap) => chapterLabel(snap.data ?? 0),
-          ),
+        // _currentChapterIndex is kept up-to-date by stream subscriptions set up
+        // in didChangeDependencies, and seeded synchronously after loadBook().
+        // Using state directly avoids a one-frame flash to chapter 1 that occurred
+        // when StreamBuilder initialData read player.position during setAudioSources.
+        chapterLabel(_currentChapterIndex),
       ],
     ]);
   }
@@ -719,9 +735,28 @@ class _PlayerScreenState extends State<PlayerScreen> {
                   ? chEnd - displayedSec
                   : Duration.zero;
             } else {
-              // MP3: positionStream/durationStream are already per-file
-              chapterElapsed = displayedSec;
-              chapterRemaining = dur - displayedSec;
+              // Multi-file: just_audio 0.10 exposes global position and total
+              // duration via setAudioSources, so we compute chapter-relative
+              // elapsed/remaining from chapterDurations + _currentChapterIndex.
+              if (book.chapterDurations.isNotEmpty) {
+                int startMs = 0;
+                for (int i = 0; i < _currentChapterIndex; i++) {
+                  startMs += book.chapterDurations[i].inMilliseconds;
+                }
+                final chapStart = Duration(milliseconds: startMs);
+                final chapDur = _currentChapterIndex < book.chapterDurations.length
+                    ? book.chapterDurations[_currentChapterIndex]
+                    : Duration.zero;
+                final chapEnd = chapStart + chapDur;
+                chapterElapsed =
+                    displayedSec > chapStart ? displayedSec - chapStart : Duration.zero;
+                chapterRemaining =
+                    chapEnd > displayedSec ? chapEnd - displayedSec : Duration.zero;
+              } else {
+                // chapterDurations not populated — fall back to book-level times.
+                chapterElapsed = displayedSec;
+                chapterRemaining = dur - displayedSec;
+              }
             }
 
             return Column(children: [
