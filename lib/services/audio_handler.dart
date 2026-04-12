@@ -384,8 +384,8 @@ class AudioVaultHandler extends BaseAudioHandler {
     final sources =
         book.audioFiles.map((p) => AudioSource.uri(Uri.file(p))).toList();
     try {
-      await _player.setAudioSource(
-        ConcatenatingAudioSource(children: sources),
+      await _player.setAudioSources(
+        sources,
         initialIndex: saved?.chapterIndex ?? 0,
         initialPosition: saved?.position ?? Duration.zero,
       );

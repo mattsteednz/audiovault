@@ -49,7 +49,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
         return;
       }
 
-      final result = await FilePicker.platform.getDirectoryPath(
+      final result = await FilePicker.getDirectoryPath(
         dialogTitle: 'Select your audiobooks folder',
       );
       if (result == null) {

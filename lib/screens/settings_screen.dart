@@ -65,7 +65,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
           }
         }
       }
-      final result = await FilePicker.platform.getDirectoryPath(
+      final result = await FilePicker.getDirectoryPath(
         dialogTitle: 'Select your audiobooks folder',
       );
       if (result != null && result != _folderPath) {
