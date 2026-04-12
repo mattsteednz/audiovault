@@ -148,6 +148,7 @@ class ScannerService {
     String? author;
     Duration totalDuration = Duration.zero;
     final chapterDurations = <Duration>[];
+    final rawTitles = <String?>[];
     Uint8List? coverBytes;
     bool foundCoverInMetadata = false;
 
@@ -166,16 +167,25 @@ class ScannerService {
         chapterDurations.add(fileDur);
         totalDuration += fileDur;
 
+        // Collect raw track title for chapter name detection later.
+        rawTitles.add(metadata.title?.trim().isEmpty == true
+            ? null
+            : metadata.title?.trim());
+
         // Use album tag as book title (track title is a chapter name, not the book).
         if (title == name) {
           final album = metadata.album;
           if (album != null && album.isNotEmpty) title = album;
         }
 
-        // Use first non-empty artist as author.
+        // Use first non-empty artist as author; fall back to performers list.
         if (author == null) {
           final a = metadata.artist;
-          if (a != null && a.isNotEmpty) author = a;
+          if (a != null && a.isNotEmpty) {
+            author = a;
+          } else if (metadata.performers.isNotEmpty) {
+            author = metadata.performers.first;
+          }
         }
 
         // Extract embedded cover art.
@@ -188,12 +198,32 @@ class ScannerService {
       } catch (e) {
         _log('    Metadata error for ${p.basename(filePath)}: $e');
         chapterDurations.add(Duration.zero); // keep list in sync with audioFiles
+        rawTitles.add(null);
       }
     }
 
     // .cue metadata fills in what embedded tags didn't provide.
     if (cueSheet?.title != null && title == name) title = cueSheet!.title!;
     if (cueSheet?.author != null && author == null) author = cueSheet!.author;
+
+    // Build per-file chapter names for multi-file books from title metadata.
+    // M4B and single-file CUE books use the chapters list instead.
+    List<String> chapterNames = const [];
+    if (audioFiles.length > 1) {
+      final names = [
+        for (int i = 0; i < audioFiles.length; i++)
+          _detectChapterName(
+            rawTitles.length > i ? rawTitles[i] : null,
+            title,
+            audioFiles[i],
+          ),
+      ];
+      // Only store if at least one name differs from the filename fallback,
+      // i.e. metadata actually improved on the bare filename.
+      final anyImproved = names.indexed.any((e) =>
+          e.$2 != p.basenameWithoutExtension(audioFiles[e.$1]));
+      if (anyImproved) chapterNames = names;
+    }
 
     // Chapter parsing: embedded M4B takes priority; .cue is second choice.
     List<Chapter> chapters = const [];
@@ -222,6 +252,7 @@ class ScannerService {
       audioFiles: audioFiles,
       chapterDurations: chapterDurations,
       chapters: chapters,
+      chapterNames: chapterNames,
     );
   }
 
@@ -565,6 +596,36 @@ class ScannerService {
       if (cmp != 0) return cmp;
     }
     return segA.length.compareTo(segB.length);
+  }
+
+  // ── Chapter name detection ───────────────────────────────────────────────
+
+  /// Derives a display chapter name from [title] (the ID3/Vorbis title tag),
+  /// [album] (the book title), and [filePath] as a final fallback.
+  ///
+  /// Heuristic:
+  ///   1. Empty/null title → filename without extension
+  ///   2. Title equals album (tagger copied album→title) → filename
+  ///   3. Title contains " - " or " | " → extract part after last delimiter
+  ///   4. Otherwise → use title directly
+  String _detectChapterName(String? title, String album, String filePath) {
+    if (title == null || title.isEmpty) {
+      return p.basenameWithoutExtension(filePath);
+    }
+
+    if (title.toLowerCase() == album.toLowerCase()) {
+      return p.basenameWithoutExtension(filePath);
+    }
+
+    for (final delimiter in [' - ', ' | ']) {
+      final idx = title.lastIndexOf(delimiter);
+      if (idx > 0) {
+        final after = title.substring(idx + delimiter.length).trim();
+        if (after.isNotEmpty) return after;
+      }
+    }
+
+    return title;
   }
 
   // ── CUE sheet parser ─────────────────────────────────────────────────────

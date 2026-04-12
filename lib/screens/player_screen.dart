@@ -518,8 +518,9 @@ class _PlayerScreenState extends State<PlayerScreen> {
                           scrollCtrl: scrollCtrl,
                           count: chapCount,
                           currentIndex: _currentChapterIndex,
-                          title: (i) => p.basenameWithoutExtension(
-                              book.audioFiles[i]),
+                          title: (i) => book.chapterNames.isNotEmpty
+                              ? book.chapterNames[i]
+                              : p.basenameWithoutExtension(book.audioFiles[i]),
                           duration: (i) => i < book.chapterDurations.length
                               ? book.chapterDurations[i]
                               : null,
@@ -662,21 +663,48 @@ class _PlayerScreenState extends State<PlayerScreen> {
     final totalChapters = isM4b ? book.chapters.length : chapterCount;
     final hasChapters = totalChapters > 1;
 
+    String? chapterTitle(int currentIndex) {
+      if (isM4b) return book.chapters[currentIndex].title;
+      if (book.chapterNames.isNotEmpty &&
+          currentIndex < book.chapterNames.length) {
+        return book.chapterNames[currentIndex];
+      }
+      return null;
+    }
+
     Widget chapterLabel(int currentIndex) => GestureDetector(
           onTap: hasChapters ? () => _showChapterList(context) : null,
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
+          child: Column(
             children: [
-              Text(
-                'Chapter ${currentIndex + 1} of $totalChapters',
-                style: theme.textTheme.bodySmall
-                    ?.copyWith(color: theme.colorScheme.primary),
+              Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    'Chapter ${currentIndex + 1} of $totalChapters',
+                    style: theme.textTheme.bodySmall
+                        ?.copyWith(color: theme.colorScheme.primary),
+                  ),
+                  if (hasChapters) ...[
+                    const SizedBox(width: 2),
+                    Icon(Icons.expand_more_rounded,
+                        size: 16, color: theme.colorScheme.primary),
+                  ],
+                ],
               ),
-              if (hasChapters) ...[
-                const SizedBox(width: 2),
-                Icon(Icons.expand_more_rounded,
-                    size: 16, color: theme.colorScheme.primary),
-              ],
+              if (chapterTitle(currentIndex) case final title?)
+                Padding(
+                  padding: const EdgeInsets.only(top: 2),
+                  child: Text(
+                    title,
+                    style: theme.textTheme.bodyMedium?.copyWith(
+                      color: theme.colorScheme.onSurface
+                          .withValues(alpha: 0.75),
+                    ),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    textAlign: TextAlign.center,
+                  ),
+                ),
             ],
           ),
         );

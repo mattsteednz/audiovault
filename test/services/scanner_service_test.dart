@@ -148,6 +148,42 @@ FILE "audiobook.mp3" MP3
       expect(books.first.author, 'Cue Author');
     });
 
+    // ── Chapter name detection ───────────────────────────────────────────────
+
+    test('chapterNames is empty when metadata read fails (dummy files)', () async {
+      // Dummy files have no valid metadata — chapterNames should stay empty
+      // and the player falls back to filenames.
+      final bookDir = Directory('${tempDir.path}/No Meta Book');
+      await bookDir.create();
+      for (final name in ['01 - Chapter One.mp3', '02 - Chapter Two.mp3']) {
+        await File('${bookDir.path}/$name').writeAsBytes([]);
+      }
+
+      final books = await scannerService.scanFolder(tempDir.path);
+      expect(books.length, 1);
+      expect(books.first.chapterNames, isEmpty);
+    });
+
+    test('single-file book has empty chapterNames (uses chapters instead)', () async {
+      final bookDir = Directory('${tempDir.path}/Single File Book');
+      await bookDir.create();
+      // .cue makes this a single-file book with chapters
+      await File('${bookDir.path}/audiobook.mp3').writeAsBytes([]);
+      await File('${bookDir.path}/audiobook.cue').writeAsString('''
+TITLE "My Book"
+FILE "audiobook.mp3" MP3
+  TRACK 01 AUDIO
+    TITLE "Chapter 1"
+    INDEX 01 00:00:00
+''');
+
+      final books = await scannerService.scanFolder(tempDir.path);
+      expect(books.length, 1);
+      // chapterNames not used for single-file books — chapters list is the source
+      expect(books.first.chapterNames, isEmpty);
+      expect(books.first.chapters.length, 1);
+    });
+
     // ── Natural sort ─────────────────────────────────────────────────────────
 
     test('naturalSort orders files correctly (e.g. 2.mp3 before 10.mp3)', () async {

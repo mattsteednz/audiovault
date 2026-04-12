@@ -34,6 +34,13 @@ class Audiobook {
   /// Embedded chapters parsed from a single M4B file (empty for multi-file books).
   final List<Chapter> chapters;
 
+  /// Display names for each audio file in a multi-file book, derived from
+  /// the `title` metadata tag via a heuristic (see ScannerService).
+  /// Empty when no usable title metadata was found — player falls back to
+  /// the filename in that case. Always empty for M4B/CUE books (which use
+  /// [chapters] instead).
+  final List<String> chapterNames;
+
   /// True when the folder contains only DRM-locked files (e.g. .aax, .aa)
   /// that cannot be played by the app.
   final bool isDrmLocked;
@@ -48,6 +55,7 @@ class Audiobook {
     required this.audioFiles,
     this.chapterDurations = const [],
     this.chapters = const [],
+    this.chapterNames = const [],
     this.isDrmLocked = false,
   });
 
@@ -77,6 +85,7 @@ class Audiobook {
       audioFiles: audioFiles,
       chapterDurations: chapterDurations,
       chapters: chapters,
+      chapterNames: chapterNames,
       isDrmLocked: isDrmLocked,
     );
   }
