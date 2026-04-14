@@ -212,7 +212,19 @@ class DriveLibraryService {
         isShared: record.isShared,
         totalFileCount: (await _repo.getFilesForBook(folderId)).length,
       ),
+      narrator: scanned.narrator,
+      description: scanned.description,
+      publisher: scanned.publisher,
+      language: scanned.language,
+      releaseDate: scanned.releaseDate,
     );
+  }
+
+  /// Deletes locally downloaded files and the DB record for a Drive book.
+  Future<void> removeDriveBook(String folderId) async {
+    final dir = Directory(await bookDir(folderId));
+    if (await dir.exists()) await dir.delete(recursive: true);
+    await _repo.deleteDriveBook(folderId);
   }
 
   /// Returns total size in bytes for all files in a Drive book.
