@@ -211,6 +211,49 @@ class ScannerService {
     if (cueSheet?.title != null && title == name) title = cueSheet!.title!;
     if (cueSheet?.author != null && author == null) author = cueSheet!.author;
 
+    // Extract extended metadata (narrator, description, publisher, language,
+    // release date) from the first audio file using format-specific tags.
+    String? narrator;
+    String? description;
+    String? publisher;
+    String? language;
+    String? releaseDate;
+    if (audioFiles.isNotEmpty) {
+      try {
+        final raw = readAllMetadata(File(audioFiles.first), getImage: false);
+        if (raw is Mp3Metadata) {
+          final lp = raw.leadPerformer?.trim();
+          if (lp != null && lp.isNotEmpty && lp != author) narrator = lp;
+          final commentText = raw.comments.firstOrNull?.text.trim();
+          if (commentText != null && commentText.isNotEmpty) {
+            description = commentText;
+          }
+          final pub = raw.publisher?.trim();
+          if (pub != null && pub.isNotEmpty) publisher = pub;
+          final lang = raw.languages?.trim();
+          if (lang != null && lang.isNotEmpty) language = lang;
+          if (raw.year != null && raw.year! > 0) {
+            releaseDate = raw.year.toString();
+          }
+        } else if (raw is VorbisMetadata) {
+          final perf = raw.performer.firstOrNull?.trim();
+          if (perf != null && perf.isNotEmpty) narrator = perf;
+          final desc = raw.description.firstOrNull?.trim() ??
+              raw.comment.firstOrNull?.trim();
+          if (desc != null && desc.isNotEmpty) description = desc;
+          final org = raw.organization.firstOrNull?.trim();
+          if (org != null && org.isNotEmpty) publisher = org;
+          final yr = raw.date.firstOrNull?.year;
+          if (yr != null && yr > 0) releaseDate = yr.toString();
+        } else if (raw is Mp4Metadata) {
+          final yr = raw.year?.year;
+          if (yr != null && yr > 0) releaseDate = yr.toString();
+        }
+      } catch (e) {
+        _log('    Extended metadata error: $e');
+      }
+    }
+
     // Build per-file chapter names for multi-file books from title metadata.
     // M4B and single-file CUE books use the chapters list instead.
     List<String> chapterNames = const [];
@@ -258,6 +301,11 @@ class ScannerService {
       chapterDurations: chapterDurations,
       chapters: chapters,
       chapterNames: chapterNames,
+      narrator: narrator,
+      description: description,
+      publisher: publisher,
+      language: language,
+      releaseDate: releaseDate,
     );
   }
 

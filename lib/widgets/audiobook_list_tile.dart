@@ -6,6 +6,7 @@ import 'drive_download_overlay.dart';
 class AudiobookListTile extends StatelessWidget {
   final Audiobook book;
   final VoidCallback? onTap;
+  final VoidCallback? onDetailsPressed;
   final bool isActive;
   final BookStatus status;
 
@@ -13,6 +14,7 @@ class AudiobookListTile extends StatelessWidget {
     super.key,
     required this.book,
     this.onTap,
+    this.onDetailsPressed,
     this.isActive = false,
     this.status = BookStatus.notStarted,
   });
@@ -20,34 +22,41 @@ class AudiobookListTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+
+    final coverWidget = Stack(
+      children: [
+        ClipRRect(
+          borderRadius: BorderRadius.circular(6),
+          child: SizedBox(width: 56, height: 56, child: BookCover(book: book, iconSize: 28)),
+        ),
+        if (isActive)
+          Positioned(
+            right: 0,
+            bottom: 0,
+            child: Container(
+              padding: const EdgeInsets.all(3),
+              decoration: BoxDecoration(
+                color: theme.colorScheme.primary,
+                shape: BoxShape.circle,
+              ),
+              child: Icon(
+                Icons.volume_up_rounded,
+                size: 12,
+                color: theme.colorScheme.onPrimary,
+              ),
+            ),
+          ),
+      ],
+    );
+
+    final leading = book.source == AudiobookSource.drive
+        ? DriveDownloadOverlay(book: book, child: coverWidget, iconSize: 24, indicatorSize: 24)
+        : coverWidget;
+
     final tile = ListTile(
       onTap: onTap,
       contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
-      leading: Stack(
-        children: [
-          ClipRRect(
-            borderRadius: BorderRadius.circular(6),
-            child: SizedBox(width: 56, height: 56, child: BookCover(book: book, iconSize: 28)),
-          ),
-          if (isActive)
-            Positioned(
-              right: 0,
-              bottom: 0,
-              child: Container(
-                padding: const EdgeInsets.all(3),
-                decoration: BoxDecoration(
-                  color: theme.colorScheme.primary,
-                  shape: BoxShape.circle,
-                ),
-                child: Icon(
-                  Icons.volume_up_rounded,
-                  size: 12,
-                  color: theme.colorScheme.onPrimary,
-                ),
-              ),
-            ),
-        ],
-      ),
+      leading: leading,
       title: Text(
         book.title,
         maxLines: 2,
@@ -76,19 +85,38 @@ class AudiobookListTile extends StatelessWidget {
             ),
         ],
       ),
-      trailing: book.isDrmLocked
-          ? Icon(Icons.lock_rounded,
-              size: 20, color: theme.colorScheme.onSurface.withValues(alpha: 0.5))
-          : status == BookStatus.finished
-              ? Icon(Icons.check_circle_rounded,
-                  size: 20, color: theme.colorScheme.secondary)
-              : null,
+      trailing: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          if (book.isDrmLocked)
+            Icon(Icons.lock_rounded,
+                size: 20,
+                color: theme.colorScheme.onSurface.withValues(alpha: 0.5)),
+          if (status == BookStatus.finished)
+            Icon(Icons.check_circle_rounded,
+                size: 20, color: theme.colorScheme.secondary),
+          PopupMenuButton<String>(
+            icon: Icon(Icons.more_vert_rounded,
+                color: theme.colorScheme.onSurface.withValues(alpha: 0.6)),
+            itemBuilder: (_) => [
+              PopupMenuItem(
+                value: 'details',
+                child: ListTile(
+                  leading: const Icon(Icons.info_outline_rounded),
+                  title: const Text('Book details'),
+                  contentPadding: EdgeInsets.zero,
+                ),
+              ),
+            ],
+            onSelected: (value) {
+              if (value == 'details') onDetailsPressed?.call();
+            },
+          ),
+        ],
+      ),
       isThreeLine: book.author != null,
     );
 
-    if (book.source == AudiobookSource.drive) {
-      return ClipRect(child: DriveDownloadOverlay(book: book, child: tile));
-    }
     return tile;
   }
 

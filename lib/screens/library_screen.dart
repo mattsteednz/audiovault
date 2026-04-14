@@ -14,6 +14,7 @@ import '../widgets/audio_handler_scope.dart';
 import '../widgets/audiobook_card.dart';
 import '../widgets/audiobook_list_tile.dart';
 import '../widgets/book_cover.dart';
+import 'book_details_screen.dart';
 import 'history_screen.dart';
 import 'player_screen.dart';
 import 'settings_screen.dart';
@@ -314,6 +315,13 @@ class _LibraryScreenState extends State<LibraryScreen> {
     ).then((_) => _applySort()); // re-sort when returning from player
   }
 
+  void _openDetails(BuildContext context, Audiobook book) {
+    Navigator.push(
+      context,
+      MaterialPageRoute(builder: (_) => BookDetailsScreen(book: book)),
+    ).then((_) => _applySort());
+  }
+
   void _showDriveDownloadSheet(BuildContext context, Audiobook book) {
     final folderId = book.driveMetadata!.folderId;
     showModalBottomSheet<void>(
@@ -611,6 +619,7 @@ class _LibraryScreenState extends State<LibraryScreen> {
         isActive: books[i].path == _activePath && _isPlaying,
         status: _statuses[books[i].path] ?? BookStatus.notStarted,
         onTap: () => _openPlayer(context, books[i]),
+        onLongPress: () => _openDetails(context, books[i]),
       ),
     );
   }
@@ -625,6 +634,7 @@ class _LibraryScreenState extends State<LibraryScreen> {
         isActive: books[i].path == _activePath && _isPlaying,
         status: _statuses[books[i].path] ?? BookStatus.notStarted,
         onTap: () => _openPlayer(context, books[i]),
+        onDetailsPressed: () => _openDetails(context, books[i]),
       ),
     );
   }

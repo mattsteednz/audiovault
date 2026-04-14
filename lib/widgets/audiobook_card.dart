@@ -6,6 +6,7 @@ import 'drive_download_overlay.dart';
 class AudiobookCard extends StatelessWidget {
   final Audiobook book;
   final VoidCallback? onTap;
+  final VoidCallback? onLongPress;
   final bool isActive;
   final BookStatus status;
 
@@ -13,6 +14,7 @@ class AudiobookCard extends StatelessWidget {
     super.key,
     required this.book,
     this.onTap,
+    this.onLongPress,
     this.isActive = false,
     this.status = BookStatus.notStarted,
   });
@@ -24,6 +26,7 @@ class AudiobookCard extends StatelessWidget {
       clipBehavior: Clip.antiAlias,
       child: InkWell(
         onTap: onTap,
+        onLongPress: onLongPress,
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [

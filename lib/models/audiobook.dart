@@ -72,6 +72,14 @@ class Audiobook {
   /// Drive-specific metadata. Non-null only when [source] == [AudiobookSource.drive].
   final DriveBookMeta? driveMetadata;
 
+  final String? narrator;
+  final String? description;
+  final String? publisher;
+  final String? language;
+
+  /// Release year as a string, e.g. "2021". Null if not available in metadata.
+  final String? releaseDate;
+
   const Audiobook({
     required this.title,
     this.author,
@@ -86,6 +94,11 @@ class Audiobook {
     this.isDrmLocked = false,
     this.source = AudiobookSource.local,
     this.driveMetadata,
+    this.narrator,
+    this.description,
+    this.publisher,
+    this.language,
+    this.releaseDate,
   });
 
   /// Returns the index of the M4B embedded chapter that contains [position].
@@ -113,6 +126,11 @@ class Audiobook {
     String? title,
     String? author,
     Duration? duration,
+    String? narrator,
+    String? description,
+    String? publisher,
+    String? language,
+    String? releaseDate,
   }) {
     return Audiobook(
       title: title ?? this.title,
@@ -128,6 +146,11 @@ class Audiobook {
       isDrmLocked: isDrmLocked,
       source: source,
       driveMetadata: driveMetadata,
+      narrator: narrator ?? this.narrator,
+      description: description ?? this.description,
+      publisher: publisher ?? this.publisher,
+      language: language ?? this.language,
+      releaseDate: releaseDate ?? this.releaseDate,
     );
   }
 }
