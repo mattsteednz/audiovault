@@ -64,10 +64,17 @@ class DriveDownloadManager {
   /// multi-file download where we want the whole book.
   Future<void> enqueueAllFiles(String folderId) async {
     final files = await _repo.getFilesForBook(folderId);
+    // Include error-state files so retrying a failed download works.
     final toQueue = files
-        .where((f) => f.downloadState == DriveDownloadState.none)
+        .where((f) =>
+            f.downloadState == DriveDownloadState.none ||
+            f.downloadState == DriveDownloadState.error)
         .toList();
+    // Reset error-state files back to none before re-queuing.
     for (final f in toQueue) {
+      if (f.downloadState == DriveDownloadState.error) {
+        await _repo.updateFileState(folderId, f.fileIndex, DriveDownloadState.none);
+      }
       _enqueue(folderId, f);
     }
     _drain();

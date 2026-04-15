@@ -303,9 +303,9 @@ class _LibraryScreenState extends State<LibraryScreen> {
       return;
     }
 
-    // Drive book: check if files are available locally
-    if (book.source == AudiobookSource.drive && book.audioFiles.isEmpty) {
-      // Files might be downloaded but the book object is stale — try refreshing
+    // Drive book: ensure files are available and metadata is fully populated
+    if (book.source == AudiobookSource.drive &&
+        (book.audioFiles.isEmpty || book.chapterDurations.isEmpty)) {
       final folderId = book.driveMetadata!.folderId;
       final files = await locator<DriveBookRepository>().getFilesForBook(folderId);
       final allDone = files.isNotEmpty &&
@@ -318,11 +318,11 @@ class _LibraryScreenState extends State<LibraryScreen> {
         );
         if (refreshed != null && refreshed.audioFiles.isNotEmpty) {
           book = refreshed;
-        } else {
+        } else if (book.audioFiles.isEmpty) {
           if (context.mounted) _showDriveDownloadSheet(context, book);
           return;
         }
-      } else {
+      } else if (book.audioFiles.isEmpty) {
         if (context.mounted) _showDriveDownloadSheet(context, book);
         return;
       }
