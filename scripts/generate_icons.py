@@ -31,6 +31,7 @@ def s(v):
 
 def draw_icon(size: int) -> Image.Image:
     img = Image.new("RGBA", (SRC, SRC), (0, 0, 0, 0))
+    img_ctx = img
     d = ImageDraw.Draw(img)
 
     cx, cy = SRC / 2, SRC / 2
@@ -106,7 +107,9 @@ def draw_icon(size: int) -> Image.Image:
     d.ellipse([cx - r2, cy - r2, cx + r2, cy + r2], fill=WHITE_DOT)
 
     # Downsample to target size with high-quality Lanczos
-    return img.resize((size, size), Image.LANCZOS)
+    result = img.resize((size, size), Image.LANCZOS)
+    img.close()
+    return result
 
 
 def save(img: Image.Image, path: str):
@@ -148,9 +151,12 @@ def main():
         inner_px = int(canvas_px * (72 / 108))
         icon = draw_icon(inner_px)
         canvas = Image.new("RGBA", (canvas_px, canvas_px), (0, 0, 0, 0))
-        offset = (canvas_px - inner_px) // 2
-        canvas.paste(icon, (offset, offset))
-        save(canvas, str(root / "android/app/src/main/res" / folder / "ic_launcher_foreground.png"))
+        try:
+            offset = (canvas_px - inner_px) // 2
+            canvas.paste(icon, (offset, offset))
+            save(canvas, str(root / "android/app/src/main/res" / folder / "ic_launcher_foreground.png"))
+        finally:
+            canvas.close()
 
     # ── iOS AppIcon ──────────────────────────────────────────────────────────
     # iOS icons must NOT have rounded corners or transparency — the OS clips them.
@@ -162,6 +168,7 @@ def main():
         """Same icon but with square corners and opaque background (iOS requirement)."""
         img = Image.new("RGBA", (SRC, SRC), BG)   # solid bg, no rounding
         d = ImageDraw.Draw(img)
+
         cx, cy = SRC / 2, SRC / 2
         stroke = 2.5
         def ring(r_outer_svg, r_inner_svg, colour):
@@ -198,7 +205,9 @@ def main():
         r5 = s(5); d.ellipse([cx-r5,cy-r5,cx+r5,cy+r5], fill=LIGHT)
         r4 = s(4); d.ellipse([cx-r4,cy-r4,cx+r4,cy+r4], fill=BG)
         r2 = s(2); d.ellipse([cx-r2,cy-r2,cx+r2,cy+r2], fill=WHITE_DOT)
-        return img.resize((size, size), Image.LANCZOS)
+        result = img.resize((size, size), Image.LANCZOS)
+        img.close()
+        return result
 
     for size in ios_sizes:
         img = draw_icon_flat(size)
