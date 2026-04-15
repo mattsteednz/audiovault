@@ -219,9 +219,9 @@ class _RemoveButton extends StatelessWidget {
           ),
         );
         if (confirmed == true && context.mounted) {
-          await locator<DriveLibraryService>()
-              .undownloadBook(book.driveMetadata!.folderId);
-          if (context.mounted) Navigator.pop(context);
+          final folderId = book.driveMetadata!.folderId;
+          await locator<DriveLibraryService>().undownloadBook(folderId);
+          if (context.mounted) Navigator.pop(context, folderId);
         }
       },
       icon: const Icon(Icons.delete_outline_rounded),

@@ -336,12 +336,15 @@ class _LibraryScreenState extends State<LibraryScreen> {
   }
 
   void _openDetails(BuildContext context, Audiobook book) {
-    Navigator.push<bool>(
+    Navigator.push<dynamic>(
       context,
       MaterialPageRoute(builder: (_) => BookDetailsScreen(book: book)),
-    ).then((removed) {
-      if (removed == true) {
+    ).then((result) {
+      if (result == true) {
         _scan();
+      } else if (result is String) {
+        // Drive book was undownloaded — result is the folderId.
+        _refreshDriveBook(result);
       } else {
         _applySort();
       }

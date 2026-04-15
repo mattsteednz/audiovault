@@ -212,11 +212,16 @@ class DriveLibraryService {
     );
   }
 
-  /// Deletes locally downloaded files for a Drive book and resets its download
-  /// state to none. The book record is kept so it remains visible in the library.
+  /// Deletes locally downloaded audio files for a Drive book and resets its
+  /// download state to none. Cover art is preserved. The book record is kept.
   Future<void> undownloadBook(String folderId) async {
-    final dir = Directory(await bookDir(folderId));
-    if (await dir.exists()) await dir.delete(recursive: true);
+    final files = await _repo.getFilesForBook(folderId);
+    for (final f in files) {
+      if (f.localPath != null) {
+        final file = File(f.localPath!);
+        if (await file.exists()) await file.delete();
+      }
+    }
     await _repo.resetBookDownloads(folderId);
   }
 
