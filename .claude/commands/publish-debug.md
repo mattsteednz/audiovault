@@ -1,3 +1,8 @@
+---
+name: publish-debug
+description: Build a debug APK from main and deploy to remote releases via SFTP
+---
+
 # /publish-debug — Build and publish a debug APK from main
 
 Ensures you're on the latest main, builds a debug APK, and deploys it to the remote releases server via SFTP.

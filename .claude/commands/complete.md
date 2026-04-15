@@ -1,3 +1,8 @@
+---
+name: complete
+description: Feature sign-off — verify tests, analyse, update docs, bump version, merge to main
+---
+
 # /complete — Feature completion checklist
 
 Run this command when a feature is ready to ship. It will verify tests, analyse code, update docs, bump the version, and merge to main.
