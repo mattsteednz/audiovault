@@ -9,7 +9,8 @@ A Flutter audiobook player for Android and iOS with background playback, positio
 - **Background playback** — continues playing when the screen is off or you switch apps, with a lock-screen / notification media control
 - **Chapter navigation** — chapter list drawn from audio metadata; swipe or tap to jump between chapters
 - **Position persistence** — resumes exactly where you left off across app restarts, using a local SQLite database
-- **Last-played sort** — library sorted by most recently played, with relative timestamps ("2 days ago"); unread books follow alphabetically
+- **Book status tracking** — books are automatically marked Not started, In progress, or Finished; filter the library by status using the pill row at the top
+- **Last-played sort** — library sorted by most recently played; unread books follow alphabetically
 - **Mini player** — persistent strip at the bottom of the library shows the current book title, remaining time, and a play/pause button
 - **Settings screen** — change the audiobooks folder and manage telemetry preference without leaving the app
 - **Telemetry opt-in** — first-run consent prompt; anonymous crash reports and usage data via Google Firebase (can be toggled off anytime in Settings)

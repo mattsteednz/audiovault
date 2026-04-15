@@ -6,6 +6,22 @@ All notable changes to AudioVault are documented here.
 
 ---
 
+## [1.2.0] — 2026-05-01
+
+### Added
+
+- **Book status tracking** — Each book is automatically tracked as Not started, In progress, or Finished. Status is derived from playback position for existing books and stored explicitly once set.
+- **Status filter pills** — Horizontally scrollable filter chips at the top of the library (grid and list views) to filter by Not started, In progress, or Finished. Selecting an active pill deselects it to show all books.
+- **Finished badge** — A checkmark badge appears on book covers and list tiles for finished books, alongside the existing playing indicator.
+- **Drive: Remove when finished** — New toggle in Settings (Google Drive section). When enabled, downloaded audio files are deleted 1 minute after a book finishes, freeing storage while keeping the book in the library as Finished. The timer is cancelled if the user presses play within that window.
+- **Disable autoplay on open** — Opening the player screen no longer auto-starts playback. A book already playing continues uninterrupted; the user controls playback explicitly.
+
+### Changed
+
+- `PositionService` migrated to DB schema v3, adding a `status` column to the `positions` table.
+
+---
+
 ## [1.1.0] — 2026-04-11
 
 ### Added
