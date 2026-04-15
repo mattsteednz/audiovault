@@ -2,6 +2,7 @@
 
 - Default branch: `main`
 - Never commit new code directly to `main` — always create a branch first
+- Exception: rules, config, and documentation-only changes may be committed directly to `main`
 - Create a new branch for each feature or fix: `git checkout -b <type>/<short-description>`
   - Types: `feature/`, `fix/`, `security/`, `chore/`
 - Keep commits focused; write descriptive commit messages
