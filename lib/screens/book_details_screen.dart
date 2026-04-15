@@ -220,7 +220,7 @@ class _RemoveButton extends StatelessWidget {
         );
         if (confirmed == true && context.mounted) {
           await locator<DriveLibraryService>()
-              .removeDriveBook(book.driveMetadata!.folderId);
+              .undownloadBook(book.driveMetadata!.folderId);
           if (context.mounted) Navigator.pop(context);
         }
       },

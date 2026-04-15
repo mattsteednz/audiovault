@@ -8,6 +8,7 @@ class AudiobookListTile extends StatelessWidget {
   final VoidCallback? onTap;
   final VoidCallback? onDetailsPressed;
   final bool isActive;
+  final BookStatus status;
 
   const AudiobookListTile({
     super.key,
@@ -15,6 +16,7 @@ class AudiobookListTile extends StatelessWidget {
     this.onTap,
     this.onDetailsPressed,
     this.isActive = false,
+    this.status = BookStatus.notStarted,
   });
 
   @override
