@@ -65,4 +65,5 @@ class DefaultFirebaseOptions {
     storageBucket: 'audiovault-7c0de.firebasestorage.app',
     iosBundleId: 'com.mattsteed.audiovault',
   );
+
 }
