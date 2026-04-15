@@ -162,13 +162,13 @@ class DriveBookRepository {
     return DriveBookRecord.fromMap(rows.first, fileIds);
   }
 
-  /// Resets all files for a book back to [DriveDownloadState.none] and clears
-  /// their local paths. The book record itself is kept — it stays in the library.
+  /// Resets all files for a book back to [DriveDownloadState.none].
+  /// Keeps local_path so re-downloads go to the same location.
   Future<void> resetBookDownloads(String folderId) async {
     final db = await _db;
     await db.update(
       'drive_book_files',
-      {'download_state': 'none', 'local_path': null},
+      {'download_state': 'none'},
       where: 'folder_id = ?',
       whereArgs: [folderId],
     );
