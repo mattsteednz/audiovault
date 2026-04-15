@@ -8,7 +8,6 @@ class AudiobookListTile extends StatelessWidget {
   final VoidCallback? onTap;
   final VoidCallback? onDetailsPressed;
   final bool isActive;
-  final BookStatus status;
 
   const AudiobookListTile({
     super.key,
@@ -16,47 +15,53 @@ class AudiobookListTile extends StatelessWidget {
     this.onTap,
     this.onDetailsPressed,
     this.isActive = false,
-    this.status = BookStatus.notStarted,
   });
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
 
-    final coverWidget = Stack(
-      children: [
-        ClipRRect(
-          borderRadius: BorderRadius.circular(6),
-          child: SizedBox(width: 56, height: 56, child: BookCover(book: book, iconSize: 28)),
-        ),
-        if (isActive)
-          Positioned(
-            right: 0,
-            bottom: 0,
-            child: Container(
-              padding: const EdgeInsets.all(3),
-              decoration: BoxDecoration(
-                color: theme.colorScheme.primary,
-                shape: BoxShape.circle,
-              ),
-              child: Icon(
-                Icons.volume_up_rounded,
-                size: 12,
-                color: theme.colorScheme.onPrimary,
-              ),
-            ),
-          ),
-      ],
+    Widget cover = ClipRRect(
+      borderRadius: BorderRadius.circular(6),
+      child: SizedBox(
+        width: 56,
+        height: 56,
+        child: book.source == AudiobookSource.drive
+            ? DriveDownloadOverlay(
+                book: book,
+                iconSize: 24,
+                indicatorSize: 24,
+                child: BookCover(book: book, iconSize: 28),
+              )
+            : BookCover(book: book, iconSize: 28),
+      ),
     );
 
-    final leading = book.source == AudiobookSource.drive
-        ? DriveDownloadOverlay(book: book, child: coverWidget, iconSize: 24, indicatorSize: 24)
-        : coverWidget;
-
-    final tile = ListTile(
+    return ListTile(
       onTap: onTap,
       contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
-      leading: leading,
+      leading: Stack(
+        children: [
+          cover,
+          if (isActive)
+            Positioned(
+              right: 0,
+              bottom: 0,
+              child: Container(
+                padding: const EdgeInsets.all(3),
+                decoration: BoxDecoration(
+                  color: theme.colorScheme.primary,
+                  shape: BoxShape.circle,
+                ),
+                child: Icon(
+                  Icons.volume_up_rounded,
+                  size: 12,
+                  color: theme.colorScheme.onPrimary,
+                ),
+              ),
+            ),
+        ],
+      ),
       title: Text(
         book.title,
         maxLines: 2,
@@ -92,9 +97,6 @@ class AudiobookListTile extends StatelessWidget {
             Icon(Icons.lock_rounded,
                 size: 20,
                 color: theme.colorScheme.onSurface.withValues(alpha: 0.5)),
-          if (status == BookStatus.finished)
-            Icon(Icons.check_circle_rounded,
-                size: 20, color: theme.colorScheme.secondary),
           PopupMenuButton<String>(
             icon: Icon(Icons.more_vert_rounded,
                 color: theme.colorScheme.onSurface.withValues(alpha: 0.6)),
@@ -116,8 +118,6 @@ class AudiobookListTile extends StatelessWidget {
       ),
       isThreeLine: book.author != null,
     );
-
-    return tile;
   }
 
   String _formatDuration(Duration d) {
@@ -126,5 +126,4 @@ class AudiobookListTile extends StatelessWidget {
     if (h > 0) return '${h}h ${m}m';
     return '${m}m';
   }
-
 }

@@ -7,6 +7,7 @@ import 'screens/consent_screen.dart';
 import 'screens/library_screen.dart';
 import 'screens/onboarding_screen.dart';
 import 'services/audio_handler.dart';
+import 'services/drive_book_repository.dart';
 import 'services/drive_service.dart';
 import 'services/preferences_service.dart';
 import 'services/telemetry_service.dart';
@@ -31,6 +32,9 @@ void main() async {
 
   // Restore Drive session silently (no-op if never signed in).
   await locator<DriveService>().restoreSession();
+
+  // Recover any downloads interrupted by app kill.
+  await locator<DriveBookRepository>().resetStaleDownloads();
 
   // Initialise audio service.
   final audioHandler = await AudioService.init<AudioVaultHandler>(

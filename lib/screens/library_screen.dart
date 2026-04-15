@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'package:audio_service/audio_service.dart';
+import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:flutter/material.dart';
 import '../models/audiobook.dart';
 import '../services/audio_handler.dart';
@@ -239,9 +240,10 @@ class _LibraryScreenState extends State<LibraryScreen> {
   }
 
   void _onDriveDownloadEvent(DriveDownloadEvent event) {
-    // When a file finishes downloading, reload the Drive book to pick up the
-    // new local path, and check if the book is now fully downloaded.
-    if (event.state == DriveDownloadState.done) {
+    // When an audio file finishes downloading, reload the Drive book to pick up
+    // the new local path, and check if the book is now fully downloaded.
+    // Skip cover downloads (fileIndex == null).
+    if (event.state == DriveDownloadState.done && event.fileIndex != null) {
       _refreshDriveBook(event.folderId);
     }
   }
@@ -256,15 +258,13 @@ class _LibraryScreenState extends State<LibraryScreen> {
     if (allDone) {
       // Promote: re-scan local dir for full metadata
       updated = await driveLibService.promoteToLocal(folderId);
-    } else {
-      // Partial: reload from DB
+    }
+    // Fallback: reload from DB (covers partial downloads or failed promote)
+    if (updated == null) {
       final freshBooks = await driveLibService.loadDriveBooks();
-      updated = freshBooks.firstWhere(
-        (b) => b.driveMetadata?.folderId == folderId,
-        orElse: () => _driveBooks.firstWhere(
-          (b) => b.driveMetadata?.folderId == folderId,
-          orElse: () => _driveBooks.first,
-        ),
+      updated = freshBooks.cast<Audiobook?>().firstWhere(
+        (b) => b?.driveMetadata?.folderId == folderId,
+        orElse: () => null,
       );
     }
     if (updated == null) return;
@@ -278,7 +278,7 @@ class _LibraryScreenState extends State<LibraryScreen> {
     _applySort();
   }
 
-  void _openPlayer(BuildContext context, Audiobook book) {
+  Future<void> _openPlayer(BuildContext context, Audiobook book) async {
     if (book.isDrmLocked) {
       showDialog<void>(
         context: context,
@@ -303,12 +303,32 @@ class _LibraryScreenState extends State<LibraryScreen> {
       return;
     }
 
-    // Drive book: prompt download if no files are available locally
+    // Drive book: check if files are available locally
     if (book.source == AudiobookSource.drive && book.audioFiles.isEmpty) {
-      _showDriveDownloadSheet(context, book);
-      return;
+      // Files might be downloaded but the book object is stale — try refreshing
+      final folderId = book.driveMetadata!.folderId;
+      final files = await locator<DriveBookRepository>().getFilesForBook(folderId);
+      final allDone = files.isNotEmpty &&
+          files.every((f) => f.downloadState == DriveDownloadState.done);
+      if (allDone) {
+        await _refreshDriveBook(folderId);
+        final refreshed = _driveBooks.cast<Audiobook?>().firstWhere(
+          (b) => b?.driveMetadata?.folderId == folderId,
+          orElse: () => null,
+        );
+        if (refreshed != null && refreshed.audioFiles.isNotEmpty) {
+          book = refreshed;
+        } else {
+          if (context.mounted) _showDriveDownloadSheet(context, book);
+          return;
+        }
+      } else {
+        if (context.mounted) _showDriveDownloadSheet(context, book);
+        return;
+      }
     }
 
+    if (!context.mounted) return;
     Navigator.push(
       context,
       MaterialPageRoute(builder: (_) => PlayerScreen(book: book)),
@@ -316,14 +336,30 @@ class _LibraryScreenState extends State<LibraryScreen> {
   }
 
   void _openDetails(BuildContext context, Audiobook book) {
-    Navigator.push(
+    Navigator.push<bool>(
       context,
       MaterialPageRoute(builder: (_) => BookDetailsScreen(book: book)),
-    ).then((_) => _applySort());
+    ).then((removed) {
+      if (removed == true) {
+        _scan();
+      } else {
+        _applySort();
+      }
+    });
   }
 
-  void _showDriveDownloadSheet(BuildContext context, Audiobook book) {
+  Future<void> _showDriveDownloadSheet(BuildContext context, Audiobook book) async {
     final folderId = book.driveMetadata!.folderId;
+    final connectivity = await Connectivity().checkConnectivity();
+    final isWifi = connectivity.contains(ConnectivityResult.wifi) ||
+        connectivity.contains(ConnectivityResult.ethernet);
+
+    int? sizeBytes;
+    if (!isWifi) {
+      sizeBytes = await locator<DriveLibraryService>().totalSizeBytes(folderId);
+    }
+    if (!context.mounted) return;
+
     showModalBottomSheet<void>(
       context: context,
       builder: (ctx) => Padding(
@@ -337,8 +373,12 @@ class _LibraryScreenState extends State<LibraryScreen> {
                 maxLines: 2,
                 overflow: TextOverflow.ellipsis),
             const SizedBox(height: 8),
-            const Text(
-                'This book hasn\'t been downloaded yet. Download it to start listening.'),
+            if (sizeBytes != null)
+              Text('You\'re on mobile data. This book is ${_formatBytes(sizeBytes)}. '
+                  'Download anyway?')
+            else
+              const Text(
+                  'This book hasn\'t been downloaded yet. Download it to start listening.'),
             const SizedBox(height: 20),
             Row(
               mainAxisAlignment: MainAxisAlignment.end,
@@ -350,7 +390,9 @@ class _LibraryScreenState extends State<LibraryScreen> {
                 const SizedBox(width: 8),
                 FilledButton.icon(
                   icon: const Icon(Icons.download_rounded),
-                  label: const Text('Download'),
+                  label: Text(sizeBytes != null
+                      ? 'Download (${_formatBytes(sizeBytes)})'
+                      : 'Download'),
                   onPressed: () {
                     Navigator.pop(ctx);
                     locator<DriveLibraryService>().startDownload(folderId);
@@ -362,6 +404,13 @@ class _LibraryScreenState extends State<LibraryScreen> {
         ),
       ),
     );
+  }
+
+  static String _formatBytes(int bytes) {
+    if (bytes < 1024) return '$bytes B';
+    if (bytes < 1024 * 1024) return '${(bytes / 1024).toStringAsFixed(0)} KB';
+    if (bytes < 1024 * 1024 * 1024) return '${(bytes / (1024 * 1024)).toStringAsFixed(1)} MB';
+    return '${(bytes / (1024 * 1024 * 1024)).toStringAsFixed(2)} GB';
   }
 
   // ── Build ────────────────────────────────────────────────────────────────────

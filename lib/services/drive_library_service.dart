@@ -149,24 +149,9 @@ class DriveLibraryService {
     }
   }
 
-  /// Initiates download of the first file for a multi-file book so the user
-  /// can start playing, then queues the rest progressively.
-  /// For M4B (single file), downloads the whole book.
+  /// Downloads all files for a book.
   Future<void> startDownload(String folderId) async {
-    final files = await _repo.getFilesForBook(folderId);
-    if (files.isEmpty) return;
-
-    final isSingleFile = files.length == 1;
-    if (isSingleFile) {
-      await _downloadManager.enqueueAllFiles(folderId);
-    } else {
-      // Download first file immediately, rest will be queued progressively
-      await _downloadManager.enqueueNextFiles(
-        folderId: folderId,
-        fromFileIndex: 0,
-        count: 1,
-      );
-    }
+    await _downloadManager.enqueueAllFiles(folderId);
   }
 
   /// After a book is fully downloaded, re-scans its local directory via
@@ -192,13 +177,20 @@ class DriveLibraryService {
     final scanned = await _scanner.scanSingleBook(dir);
     if (scanned == null) return null;
 
+    // Ensure cover is picked up even if scanner didn't find one
+    String? finalCoverPath = scanned.coverImagePath;
+    if (finalCoverPath == null) {
+      final coverFile = File('$dir/cover.jpg');
+      if (await coverFile.exists()) finalCoverPath = coverFile.path;
+    }
+
     // Return the scanned book augmented with Drive metadata
     return Audiobook(
       title: scanned.title.isNotEmpty ? scanned.title : record.folderName,
       author: scanned.author,
       duration: scanned.duration,
       path: scanned.path,
-      coverImagePath: scanned.coverImagePath,
+      coverImagePath: finalCoverPath,
       coverImageBytes: scanned.coverImageBytes,
       audioFiles: scanned.audioFiles,
       chapterDurations: scanned.chapterDurations,
@@ -220,11 +212,12 @@ class DriveLibraryService {
     );
   }
 
-  /// Deletes locally downloaded files and the DB record for a Drive book.
-  Future<void> removeDriveBook(String folderId) async {
+  /// Deletes locally downloaded files for a Drive book and resets its download
+  /// state to none. The book record is kept so it remains visible in the library.
+  Future<void> undownloadBook(String folderId) async {
     final dir = Directory(await bookDir(folderId));
     if (await dir.exists()) await dir.delete(recursive: true);
-    await _repo.deleteDriveBook(folderId);
+    await _repo.resetBookDownloads(folderId);
   }
 
   /// Returns total size in bytes for all files in a Drive book.

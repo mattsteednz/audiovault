@@ -11,12 +11,16 @@ class DriveDownloadEvent {
   final int? fileIndex; // null = cover download
   final DriveDownloadState state;
   final double? progress; // 0.0–1.0, null if unknown
+  final int? bytesDownloaded; // bytes received for current file
+  final int? fileSizeBytes; // total size of current file
 
   const DriveDownloadEvent({
     required this.folderId,
     this.fileIndex,
     required this.state,
     this.progress,
+    this.bytesDownloaded,
+    this.fileSizeBytes,
   });
 }
 
@@ -79,6 +83,7 @@ class DriveDownloadManager {
       fileId: file.fileId,
       fileName: file.fileName,
       localPath: file.localPath ?? '',
+      sizeBytes: file.sizeBytes,
     ));
   }
 
@@ -130,6 +135,8 @@ class DriveDownloadManager {
             fileIndex: job.fileIndex,
             state: DriveDownloadState.downloading,
             progress: total > 0 ? received / total : null,
+            bytesDownloaded: received,
+            fileSizeBytes: job.sizeBytes,
           ));
         },
       );
@@ -145,6 +152,7 @@ class DriveDownloadManager {
         fileIndex: job.fileIndex,
         state: DriveDownloadState.done,
         progress: 1.0,
+        fileSizeBytes: job.sizeBytes,
       ));
     } catch (_) {
       await _repo.updateFileState(
@@ -256,7 +264,8 @@ class _DownloadJob {
   final int fileIndex;
   final String fileId;
   final String fileName;
-  final String localPath; // may be empty — DriveLibraryService sets this before enqueue
+  final String localPath;
+  final int sizeBytes;
 
   _DownloadJob({
     required this.folderId,
@@ -264,6 +273,7 @@ class _DownloadJob {
     required this.fileId,
     required this.fileName,
     required this.localPath,
+    required this.sizeBytes,
   });
 }
 

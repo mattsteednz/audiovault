@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 
 import '../locator.dart';
@@ -5,18 +6,22 @@ import '../models/audiobook.dart';
 import '../services/drive_book_repository.dart';
 import '../services/drive_download_manager.dart';
 
-/// Wraps a book card/tile with Drive-specific overlays:
+/// Wraps a book cover with Drive-specific overlays:
 /// - Grey tint + download icon when not downloaded
-/// - Progress indicator when downloading
-/// - Cloud badge when at least partially downloaded
+/// - Progress indicator when downloading (overall book progress)
+/// - Cloud badge when downloaded
 class DriveDownloadOverlay extends StatefulWidget {
   final Audiobook book;
   final Widget child;
+  final double iconSize;
+  final double indicatorSize;
 
   const DriveDownloadOverlay({
     super.key,
     required this.book,
     required this.child,
+    this.iconSize = 40,
+    this.indicatorSize = 40,
   });
 
   @override
@@ -26,11 +31,21 @@ class DriveDownloadOverlay extends StatefulWidget {
 class _DriveDownloadOverlayState extends State<DriveDownloadOverlay> {
   late final DriveDownloadManager _dlManager;
   late final DriveBookRepository _repo;
+  StreamSubscription<DriveDownloadEvent>? _sub;
 
   _OverlayState _state = _OverlayState.notDownloaded;
-  double _progress = 0;
   int _downloadedCount = 0;
   int _totalCount = 0;
+
+  // Byte-level tracking for aggregate progress
+  int _totalBookBytes = 0;
+  int _completedBytes = 0;
+  int _currentFileBytes = 0;
+
+  double get _overallProgress {
+    if (_totalBookBytes <= 0) return 0;
+    return ((_completedBytes + _currentFileBytes) / _totalBookBytes).clamp(0.0, 1.0);
+  }
 
   @override
   void initState() {
@@ -38,9 +53,28 @@ class _DriveDownloadOverlayState extends State<DriveDownloadOverlay> {
     _dlManager = locator<DriveDownloadManager>();
     _repo = locator<DriveBookRepository>();
     _initState();
-    _dlManager.downloadEvents
+    _sub = _dlManager.downloadEvents
         .where((e) => e.folderId == widget.book.driveMetadata!.folderId)
         .listen(_onEvent);
+  }
+
+  @override
+  void didUpdateWidget(DriveDownloadOverlay oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.book.driveMetadata?.folderId !=
+        widget.book.driveMetadata?.folderId) {
+      _sub?.cancel();
+      _sub = _dlManager.downloadEvents
+          .where((e) => e.folderId == widget.book.driveMetadata!.folderId)
+          .listen(_onEvent);
+      _initState();
+    }
+  }
+
+  @override
+  void dispose() {
+    _sub?.cancel();
+    super.dispose();
   }
 
   Future<void> _initState() async {
@@ -54,8 +88,13 @@ class _DriveDownloadOverlayState extends State<DriveDownloadOverlay> {
     setState(() {
       _downloadedCount = downloaded;
       _totalCount = total;
+      _totalBookBytes = files.fold<int>(0, (sum, f) => sum + f.sizeBytes);
+      _completedBytes = files
+          .where((f) => f.downloadState == DriveDownloadState.done)
+          .fold<int>(0, (sum, f) => sum + f.sizeBytes);
+
       if (total == 0 || downloaded == 0) {
-        _state = _OverlayState.notDownloaded;
+        _state = anyDownloading ? _OverlayState.downloading : _OverlayState.notDownloaded;
       } else if (anyDownloading) {
         _state = _OverlayState.downloading;
       } else if (downloaded < total) {
@@ -71,16 +110,16 @@ class _DriveDownloadOverlayState extends State<DriveDownloadOverlay> {
     setState(() {
       if (event.state == DriveDownloadState.downloading) {
         _state = _OverlayState.downloading;
-        if (event.progress != null) _progress = event.progress!;
+        _currentFileBytes = event.bytesDownloaded ?? 0;
       } else if (event.state == DriveDownloadState.done) {
+        _completedBytes += event.fileSizeBytes ?? 0;
+        _currentFileBytes = 0;
         _downloadedCount++;
         if (_downloadedCount >= _totalCount) {
           _state = _OverlayState.done;
-        } else {
-          _state = _OverlayState.partial;
         }
-        _progress = 0;
       } else if (event.state == DriveDownloadState.error) {
+        _currentFileBytes = 0;
         _state = _downloadedCount > 0
             ? _OverlayState.partial
             : _OverlayState.notDownloaded;
@@ -90,7 +129,7 @@ class _DriveDownloadOverlayState extends State<DriveDownloadOverlay> {
 
   @override
   Widget build(BuildContext context) {
-    final totalCount = widget.book.driveMetadata!.totalFileCount;
+    final progress = _overallProgress;
 
     return Stack(
       fit: StackFit.passthrough,
@@ -103,9 +142,9 @@ class _DriveDownloadOverlayState extends State<DriveDownloadOverlay> {
             child: IgnorePointer(
               child: Container(
                 color: Colors.black.withValues(alpha: 0.55),
-                child: const Center(
+                child: Center(
                   child: Icon(Icons.download_for_offline,
-                      size: 40, color: Colors.white),
+                      size: widget.iconSize, color: Colors.white),
                 ),
               ),
             ),
@@ -116,47 +155,43 @@ class _DriveDownloadOverlayState extends State<DriveDownloadOverlay> {
           Positioned.fill(
             child: IgnorePointer(
               child: Container(
-              color: Colors.black.withValues(alpha: 0.45),
-              child: Center(
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    SizedBox(
-                      width: 40,
-                      height: 40,
-                      child: CircularProgressIndicator(
-                        value: _progress > 0 ? _progress : null,
-                        color: Colors.white,
-                        strokeWidth: 3,
-                      ),
-                    ),
-                    if (_progress > 0)
-                      Padding(
-                        padding: const EdgeInsets.only(top: 4),
-                        child: Text(
-                          '${(_progress * 100).toStringAsFixed(0)}%',
-                          style: const TextStyle(
-                              color: Colors.white,
-                              fontSize: 11,
-                              fontWeight: FontWeight.bold),
+                color: Colors.black.withValues(alpha: 0.45),
+                child: Center(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      SizedBox(
+                        width: widget.indicatorSize,
+                        height: widget.indicatorSize,
+                        child: CircularProgressIndicator(
+                          value: progress > 0 ? progress : null,
+                          color: Colors.white,
+                          strokeWidth: 3,
                         ),
                       ),
-                  ],
+                      if (progress > 0)
+                        Padding(
+                          padding: const EdgeInsets.only(top: 4),
+                          child: Text(
+                            '${(progress * 100).toStringAsFixed(0)}%',
+                            style: const TextStyle(
+                                color: Colors.white,
+                                fontSize: 11,
+                                fontWeight: FontWeight.bold),
+                          ),
+                        ),
+                    ],
+                  ),
                 ),
               ),
             ),
           ),
-          ),
 
-        // Cloud badge — top-left — shown when any files exist in Drive
+        // Cloud badge — top-left
         Positioned(
-          top: 6,
-          left: 6,
-          child: _CloudBadge(
-            downloadedCount: _downloadedCount,
-            totalCount: _totalCount > 0 ? _totalCount : totalCount,
-            state: _state,
-          ),
+          top: 4,
+          left: 4,
+          child: _CloudBadge(state: _state),
         ),
       ],
     );
@@ -164,15 +199,9 @@ class _DriveDownloadOverlayState extends State<DriveDownloadOverlay> {
 }
 
 class _CloudBadge extends StatelessWidget {
-  final int downloadedCount;
-  final int totalCount;
   final _OverlayState state;
 
-  const _CloudBadge({
-    required this.downloadedCount,
-    required this.totalCount,
-    required this.state,
-  });
+  const _CloudBadge({required this.state});
 
   @override
   Widget build(BuildContext context) {
@@ -181,27 +210,13 @@ class _CloudBadge extends StatelessWidget {
         ? theme.colorScheme.primary
         : Colors.white54;
 
-    final showProgress = state == _OverlayState.partial && totalCount > 1;
-
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
+      padding: const EdgeInsets.all(4),
       decoration: BoxDecoration(
         color: Colors.black.withValues(alpha: 0.6),
         borderRadius: BorderRadius.circular(8),
       ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(Icons.cloud, size: 12, color: color),
-          if (showProgress) ...[
-            const SizedBox(width: 3),
-            Text(
-              '$downloadedCount/$totalCount',
-              style: TextStyle(color: color, fontSize: 10),
-            ),
-          ],
-        ],
-      ),
+      child: Icon(Icons.cloud, size: 12, color: color),
     );
   }
 }

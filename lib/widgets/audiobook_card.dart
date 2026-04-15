@@ -22,7 +22,66 @@ class AudiobookCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final content = Card(
+
+    Widget coverStack = Stack(
+      fit: StackFit.expand,
+      children: [
+        BookCover(book: book, iconSize: 52),
+        if (book.isDrmLocked)
+          Positioned.fill(
+            child: ColoredBox(
+              color: Colors.black.withValues(alpha: 0.45),
+              child: const Center(
+                child: Icon(
+                  Icons.lock_rounded,
+                  size: 36,
+                  color: Colors.white,
+                ),
+              ),
+            ),
+          ),
+        if (isActive)
+          Positioned(
+            right: 6,
+            bottom: 6,
+            child: Container(
+              padding: const EdgeInsets.all(4),
+              decoration: BoxDecoration(
+                color: theme.colorScheme.primary,
+                shape: BoxShape.circle,
+              ),
+              child: Icon(
+                Icons.volume_up_rounded,
+                size: 14,
+                color: theme.colorScheme.onPrimary,
+              ),
+            ),
+          )
+        else if (status == BookStatus.finished)
+          Positioned(
+            right: 6,
+            bottom: 6,
+            child: Container(
+              padding: const EdgeInsets.all(4),
+              decoration: BoxDecoration(
+                color: theme.colorScheme.secondary,
+                shape: BoxShape.circle,
+              ),
+              child: Icon(
+                Icons.check_rounded,
+                size: 14,
+                color: theme.colorScheme.onSecondary,
+              ),
+            ),
+          ),
+      ],
+    );
+
+    if (book.source == AudiobookSource.drive) {
+      coverStack = DriveDownloadOverlay(book: book, child: coverStack);
+    }
+
+    return Card(
       clipBehavior: Clip.antiAlias,
       child: InkWell(
         onTap: onTap,
@@ -30,61 +89,7 @@ class AudiobookCard extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            Expanded(
-              child: Stack(
-                fit: StackFit.expand,
-                children: [
-                  BookCover(book: book, iconSize: 52),
-                  if (book.isDrmLocked)
-                    Positioned.fill(
-                      child: ColoredBox(
-                        color: Colors.black.withValues(alpha: 0.45),
-                        child: const Center(
-                          child: Icon(
-                            Icons.lock_rounded,
-                            size: 36,
-                            color: Colors.white,
-                          ),
-                        ),
-                      ),
-                    ),
-                  if (isActive)
-                    Positioned(
-                      right: 6,
-                      bottom: 6,
-                      child: Container(
-                        padding: const EdgeInsets.all(4),
-                        decoration: BoxDecoration(
-                          color: theme.colorScheme.primary,
-                          shape: BoxShape.circle,
-                        ),
-                        child: Icon(
-                          Icons.volume_up_rounded,
-                          size: 14,
-                          color: theme.colorScheme.onPrimary,
-                        ),
-                      ),
-                    )
-                  else if (status == BookStatus.finished)
-                    Positioned(
-                      right: 6,
-                      bottom: 6,
-                      child: Container(
-                        padding: const EdgeInsets.all(4),
-                        decoration: BoxDecoration(
-                          color: theme.colorScheme.secondary,
-                          shape: BoxShape.circle,
-                        ),
-                        child: Icon(
-                          Icons.check_rounded,
-                          size: 14,
-                          color: theme.colorScheme.onSecondary,
-                        ),
-                      ),
-                    ),
-                ],
-              ),
-            ),
+            Expanded(child: coverStack),
             Padding(
               padding: const EdgeInsets.fromLTRB(8, 6, 8, 8),
               child: Column(
@@ -104,11 +109,5 @@ class AudiobookCard extends StatelessWidget {
         ),
       ),
     );
-
-    if (book.source == AudiobookSource.drive) {
-      return DriveDownloadOverlay(book: book, child: content);
-    }
-    return content;
   }
-
 }

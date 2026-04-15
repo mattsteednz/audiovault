@@ -1,3 +1,4 @@
+import 'dart:io';
 import 'package:sqflite/sqflite.dart';
 import 'position_service.dart';
 
@@ -161,6 +162,18 @@ class DriveBookRepository {
     return DriveBookRecord.fromMap(rows.first, fileIds);
   }
 
+  /// Resets all files for a book back to [DriveDownloadState.none] and clears
+  /// their local paths. The book record itself is kept — it stays in the library.
+  Future<void> resetBookDownloads(String folderId) async {
+    final db = await _db;
+    await db.update(
+      'drive_book_files',
+      {'download_state': 'none', 'local_path': null},
+      where: 'folder_id = ?',
+      whereArgs: [folderId],
+    );
+  }
+
   Future<void> deleteDriveBook(String folderId) async {
     final db = await _db;
     // Foreign key cascade handles drive_book_files deletion if FK pragmas are on,
@@ -199,14 +212,23 @@ class DriveBookRepository {
     );
   }
 
-  /// Resets any 'downloading' state back to 'none' on startup,
-  /// in case the app was killed mid-download.
+  /// Recovers stale 'downloading' state on startup.
+  /// If the local file exists, marks it as 'done'; otherwise resets to 'none'.
   Future<void> resetStaleDownloads() async {
     final db = await _db;
-    await db.update(
+    final stale = await db.query(
       'drive_book_files',
-      {'download_state': 'none'},
       where: "download_state = 'downloading'",
     );
+    for (final row in stale) {
+      final localPath = row['local_path'] as String?;
+      final exists = localPath != null && await File(localPath).exists();
+      await db.update(
+        'drive_book_files',
+        {'download_state': exists ? 'done' : 'none'},
+        where: 'folder_id = ? AND file_index = ?',
+        whereArgs: [row['folder_id'], row['file_index']],
+      );
+    }
   }
 }
