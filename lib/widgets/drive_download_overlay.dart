@@ -107,6 +107,7 @@ class _DriveDownloadOverlayState extends State<DriveDownloadOverlay> {
 
   void _onEvent(DriveDownloadEvent event) {
     if (!mounted) return;
+    if (event.fileIndex == null) return; // Cover download — skip
     setState(() {
       if (event.state == DriveDownloadState.downloading) {
         _state = _OverlayState.downloading;
