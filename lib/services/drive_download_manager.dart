@@ -212,10 +212,18 @@ class DriveDownloadManager {
         int received = 0;
         final total = response.contentLength ?? 0;
 
-        await for (final chunk in response.stream) {
-          sink.add(chunk);
-          received += chunk.length;
-          onProgress?.call(received, total);
+        try {
+          await for (final chunk in response.stream
+              .timeout(const Duration(seconds: 30))) {
+            sink.add(chunk);
+            received += chunk.length;
+            onProgress?.call(received, total);
+          }
+        } catch (_) {
+          await sink.close();
+          // Delete partial file so a retry starts fresh.
+          if (await file.exists()) await file.delete();
+          rethrow;
         }
         await sink.flush();
         await sink.close();
