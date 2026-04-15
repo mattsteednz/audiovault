@@ -15,6 +15,9 @@ class Chapter {
 /// Where the audiobook's source files originate.
 enum AudiobookSource { local, drive }
 
+/// Reading status of an audiobook.
+enum BookStatus { notStarted, inProgress, finished }
+
 /// Metadata specific to a Google Drive–sourced book.
 class DriveBookMeta {
   final String folderId;    // Drive folder ID (the "book folder")

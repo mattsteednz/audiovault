@@ -7,12 +7,14 @@ class AudiobookListTile extends StatelessWidget {
   final Audiobook book;
   final VoidCallback? onTap;
   final bool isActive;
+  final BookStatus status;
 
   const AudiobookListTile({
     super.key,
     required this.book,
     this.onTap,
     this.isActive = false,
+    this.status = BookStatus.notStarted,
   });
 
   @override
@@ -77,7 +79,10 @@ class AudiobookListTile extends StatelessWidget {
       trailing: book.isDrmLocked
           ? Icon(Icons.lock_rounded,
               size: 20, color: theme.colorScheme.onSurface.withValues(alpha: 0.5))
-          : null,
+          : status == BookStatus.finished
+              ? Icon(Icons.check_circle_rounded,
+                  size: 20, color: theme.colorScheme.secondary)
+              : null,
       isThreeLine: book.author != null,
     );
 

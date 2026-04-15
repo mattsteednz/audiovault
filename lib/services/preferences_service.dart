@@ -12,6 +12,7 @@ class PreferencesService {
   static const _driveRootFolderIdKey = 'drive_root_folder_id';
   static const _driveRootFolderNameKey = 'drive_root_folder_name';
   static const _driveRootIsSharedKey = 'drive_root_is_shared';
+  static const _removeWhenFinishedKey = 'drive_remove_when_finished';
 
   SharedPreferences? _prefs;
 
@@ -95,5 +96,13 @@ class PreferencesService {
     await prefs.remove(_driveRootFolderIdKey);
     await prefs.remove(_driveRootFolderNameKey);
     await prefs.remove(_driveRootIsSharedKey);
+  }
+
+  Future<bool> getRemoveWhenFinished() async {
+    return (await _sp).getBool(_removeWhenFinishedKey) ?? false;
+  }
+
+  Future<void> setRemoveWhenFinished(bool value) async {
+    await (await _sp).setBool(_removeWhenFinishedKey, value);
   }
 }

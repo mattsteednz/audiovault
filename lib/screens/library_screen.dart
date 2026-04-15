@@ -60,6 +60,7 @@ class _LibraryScreenState extends State<LibraryScreen> {
   List<Audiobook>? _books;       // sorted display order
   List<Audiobook>? _rawBooks;    // unsorted, straight from scanner
   List<Audiobook> _driveBooks = []; // Drive books (unsorted)
+  Map<String, BookStatus> _statuses = {};
   String? _error;
   bool _scanning = false;
   _ViewMode _viewMode = _ViewMode.grid;
@@ -193,6 +194,7 @@ class _LibraryScreenState extends State<LibraryScreen> {
     final all = [...raw, ..._driveBooks];
 
     final positions = await locator<PositionService>().getAllPositions();
+    final statuses = await locator<PositionService>().getAllStatuses();
     final played = <String, int>{
       for (final p in positions) p.bookPath: p.updatedAt
     };
@@ -208,6 +210,7 @@ class _LibraryScreenState extends State<LibraryScreen> {
 
     setState(() {
       _books = [...withHistory, ...withoutHistory];
+      _statuses = statuses;
     });
   }
 
@@ -524,6 +527,7 @@ class _LibraryScreenState extends State<LibraryScreen> {
       itemBuilder: (context, i) => AudiobookCard(
         book: books[i],
         isActive: books[i].path == _activePath && _isPlaying,
+        status: _statuses[books[i].path] ?? BookStatus.notStarted,
         onTap: () => _openPlayer(context, books[i]),
       ),
     );
@@ -537,6 +541,7 @@ class _LibraryScreenState extends State<LibraryScreen> {
       itemBuilder: (context, i) => AudiobookListTile(
         book: books[i],
         isActive: books[i].path == _activePath && _isPlaying,
+        status: _statuses[books[i].path] ?? BookStatus.notStarted,
         onTap: () => _openPlayer(context, books[i]),
       ),
     );

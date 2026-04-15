@@ -7,12 +7,14 @@ class AudiobookCard extends StatelessWidget {
   final Audiobook book;
   final VoidCallback? onTap;
   final bool isActive;
+  final BookStatus status;
 
   const AudiobookCard({
     super.key,
     required this.book,
     this.onTap,
     this.isActive = false,
+    this.status = BookStatus.notStarted,
   });
 
   @override
@@ -57,6 +59,23 @@ class AudiobookCard extends StatelessWidget {
                           Icons.volume_up_rounded,
                           size: 14,
                           color: theme.colorScheme.onPrimary,
+                        ),
+                      ),
+                    )
+                  else if (status == BookStatus.finished)
+                    Positioned(
+                      right: 6,
+                      bottom: 6,
+                      child: Container(
+                        padding: const EdgeInsets.all(4),
+                        decoration: BoxDecoration(
+                          color: theme.colorScheme.secondary,
+                          shape: BoxShape.circle,
+                        ),
+                        child: Icon(
+                          Icons.check_rounded,
+                          size: 14,
+                          color: theme.colorScheme.onSecondary,
                         ),
                       ),
                     ),

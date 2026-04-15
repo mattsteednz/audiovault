@@ -220,4 +220,18 @@ class DriveLibraryService {
     final files = await _repo.getFilesForBook(folderId);
     return files.fold<int>(0, (sum, f) => sum + f.sizeBytes);
   }
+
+  /// Deletes all downloaded audio files for [folderId] from disk and resets
+  /// their download state to [DriveDownloadState.none]. The DB record and
+  /// metadata are preserved so the book remains in the library as finished.
+  Future<void> deleteLocalFiles(String folderId) async {
+    final files = await _repo.getFilesForBook(folderId);
+    for (final f in files) {
+      if (f.localPath != null) {
+        final file = File(f.localPath!);
+        if (await file.exists()) await file.delete();
+      }
+      await _repo.updateFileState(folderId, f.fileIndex, DriveDownloadState.none);
+    }
+  }
 }

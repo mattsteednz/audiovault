@@ -40,6 +40,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   GoogleSignInAccount? _driveAccount;
   String? _driveFolderName;
   bool _driveRescanning = false;
+  bool _removeWhenFinished = false;
 
   @override
   void initState() {
@@ -59,6 +60,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     final skipInterval = await prefs.getSkipInterval();
     final driveRoot = await prefs.getDriveRootFolder();
     final driveAvail = await driveService.isAvailable();
+    final removeWhenFinished = await prefs.getRemoveWhenFinished();
 
     GoogleSignInAccount? driveAccount;
     if (driveAvail) {
@@ -76,6 +78,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
       _driveAvailable = driveAvail;
       _driveAccount = driveAccount;
       _driveFolderName = driveRoot?.name;
+      _removeWhenFinished = removeWhenFinished;
     });
   }
 
@@ -200,6 +203,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
     );
     setState(() => _driveFolderName = folder.name);
     await _rescanDrive();
+  }
+
+  Future<void> _setRemoveWhenFinished(bool value) async {
+    await locator<PreferencesService>().setRemoveWhenFinished(value);
+    setState(() => _removeWhenFinished = value);
   }
 
   Future<void> _rescanDrive() async {
@@ -361,6 +369,20 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 title: const Text('Rescan Drive'),
                 subtitle: const Text('Check for new or removed audiobooks'),
                 onTap: _driveRescanning ? null : _rescanDrive,
+                contentPadding:
+                    const EdgeInsets.symmetric(horizontal: 20, vertical: 4),
+              ),
+              ListTile(
+                leading: const Icon(Icons.delete_sweep_rounded),
+                title: const Text('Remove when finished'),
+                subtitle: const Text(
+                    'Delete downloaded files 1 minute after finishing a book. '
+                    'The book stays in your library as finished.'),
+                trailing: Switch(
+                  value: _removeWhenFinished,
+                  onChanged: _setRemoveWhenFinished,
+                ),
+                onTap: () => _setRemoveWhenFinished(!_removeWhenFinished),
                 contentPadding:
                     const EdgeInsets.symmetric(horizontal: 20, vertical: 4),
               ),
