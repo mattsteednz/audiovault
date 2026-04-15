@@ -25,9 +25,29 @@ class DriveLibraryService {
   );
 
   /// Returns the local download directory for a Drive book.
-  Future<String> bookDir(String folderId) async {
+  /// If the user has a local library folder set, uses [folderName] within it
+  /// so the book becomes part of their regular library. Falls back to app
+  /// isolated storage when no library folder is set.
+  Future<String> bookDir(String folderId, {String? folderName}) async {
+    if (folderName != null) {
+      final localPath = await _prefs.getLibraryPath();
+      if (localPath != null && localPath.isNotEmpty) {
+        return '$localPath/$folderName';
+      }
+    }
     final docs = await getApplicationDocumentsDirectory();
     return '${docs.path}/drive_books/$folderId';
+  }
+
+  /// Returns the download directories of all known Drive books.
+  /// Used by the scanner to exclude Drive-managed folders from local scan.
+  Future<Set<String>> driveBookDirs() async {
+    final books = await _repo.getAllDriveBooks();
+    final dirs = <String>{};
+    for (final b in books) {
+      dirs.add(await bookDir(b.folderId, folderName: b.folderName));
+    }
+    return dirs;
   }
 
   /// Loads all known Drive books from DB without any network calls.
@@ -43,7 +63,7 @@ class DriveLibraryService {
 
   /// Builds an [Audiobook] from a [DriveBookRecord] + its file records.
   Future<Audiobook> _buildAudiobook(DriveBookRecord record) async {
-    final dir = await bookDir(record.folderId);
+    final dir = await bookDir(record.folderId, folderName: record.folderName);
     final files = await _repo.getFilesForBook(record.folderId);
 
     // audioFiles only contains paths for downloaded files
@@ -102,8 +122,13 @@ class DriveLibraryService {
       final existing = await _repo.getDriveBook(scan.folder.id);
       if (existing != null) continue; // already tracked
 
-      final dir = await bookDir(scan.folder.id);
+      final dir = await bookDir(scan.folder.id, folderName: scan.folder.name);
       await Directory(dir).create(recursive: true);
+
+      // Exclude dot files from Drive (hidden/system files)
+      final audioFiles = scan.audioFiles
+          .where((f) => !f.name.startsWith('.'))
+          .toList();
 
       // Save book record
       await _repo.upsertDriveBook(DriveBookRecord(
@@ -114,12 +139,12 @@ class DriveLibraryService {
         accountEmail: account.email,
         addedAt: DateTime.now().millisecondsSinceEpoch,
         coverFileId: scan.coverFile?.id,
-        audioFileIds: scan.audioFiles.map((f) => f.id).toList(),
+        audioFileIds: audioFiles.map((f) => f.id).toList(),
       ));
 
       // Save file records
-      for (int i = 0; i < scan.audioFiles.length; i++) {
-        final f = scan.audioFiles[i];
+      for (int i = 0; i < audioFiles.length; i++) {
+        final f = audioFiles[i];
         await _repo.upsertFile(DriveFileRecord(
           folderId: scan.folder.id,
           fileIndex: i,
@@ -161,7 +186,7 @@ class DriveLibraryService {
     final record = await _repo.getDriveBook(folderId);
     if (record == null) return null;
 
-    final dir = await bookDir(folderId);
+    final dir = await bookDir(folderId, folderName: record.folderName);
 
     // Download cover if we have a cover file ID and don't have it yet
     final coverPath = '$dir/cover.jpg';

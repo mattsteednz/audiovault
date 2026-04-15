@@ -176,21 +176,24 @@ class _AppEntryPointState extends State<_AppEntryPoint> {
     if (consent) TelemetryService.enableCrashHandler();
 
     final path = await prefs.getLibraryPath();
+    final driveFolder = await prefs.getDriveRootFolder();
     setState(() {
       _consentDecided = true;
-      _hasLibrary = path != null && path.isNotEmpty;
+      _hasLibrary = (path != null && path.isNotEmpty) || driveFolder != null;
     });
   }
 
   Future<void> _handleConsent(bool accepted) async {
-    await locator<PreferencesService>().setAnalyticsConsent(accepted);
+    final prefs = locator<PreferencesService>();
+    await prefs.setAnalyticsConsent(accepted);
     await TelemetryService.applyConsent(accepted);
     if (accepted) TelemetryService.enableCrashHandler();
 
-    final path = await locator<PreferencesService>().getLibraryPath();
+    final path = await prefs.getLibraryPath();
+    final driveFolder = await prefs.getDriveRootFolder();
     setState(() {
       _consentDecided = true;
-      _hasLibrary = path != null && path.isNotEmpty;
+      _hasLibrary = (path != null && path.isNotEmpty) || driveFolder != null;
     });
   }
 

@@ -110,14 +110,20 @@ class DriveDownloadManager {
   }
 
   void _runJob(_BookQueue queue, _DownloadJob job) {
-    _doDownload(job).then((_) {
+    _doDownload(job, queue).then((_) {
       queue.active = false;
+      queue.activeClient = null;
       _activeCount--;
       _drain();
     }).catchError((e) {
       queue.active = false;
+      queue.activeClient = null;
       _activeCount--;
-      if (job.retriesLeft > 0) {
+      if (queue.cancelling) {
+        // Cancellation in progress — don't retry, just drain remaining.
+        queue.cancelling = false;
+        _drain();
+      } else if (job.retriesLeft > 0) {
         // Re-queue at the front with one fewer retry, after a short delay.
         Future.delayed(const Duration(seconds: 3), () {
           queue.pending.insert(0, job.withRetry());
@@ -129,7 +135,16 @@ class DriveDownloadManager {
     });
   }
 
-  Future<void> _doDownload(_DownloadJob job) async {
+  /// Cancels all pending and active downloads for [folderId].
+  Future<void> cancelDownload(String folderId) async {
+    final queue = _queues[folderId];
+    if (queue == null) return;
+    queue.cancelling = true;
+    queue.pending.clear();
+    queue.activeClient?.close(); // Causes the active stream to throw
+  }
+
+  Future<void> _doDownload(_DownloadJob job, _BookQueue queue) async {
     await _repo.updateFileState(
         job.folderId, job.fileIndex, DriveDownloadState.downloading);
     _controller.add(DriveDownloadEvent(
@@ -147,6 +162,7 @@ class DriveDownloadManager {
       await _downloadFile(
         fileId: job.fileId,
         destPath: destPath,
+        onClientCreated: (client) => queue.activeClient = client,
         onProgress: (received, total) {
           _controller.add(DriveDownloadEvent(
             folderId: job.folderId,
@@ -190,6 +206,7 @@ class DriveDownloadManager {
     required String fileId,
     required String destPath,
     void Function(int received, int total)? onProgress,
+    void Function(http.Client client)? onClientCreated,
   }) async {
     final token = await _driveService.getAccessToken();
     if (token == null) throw Exception('Not signed in');
@@ -200,6 +217,7 @@ class DriveDownloadManager {
       final request = http.Request('GET', uri)
         ..headers['Authorization'] = 'Bearer $t';
       final client = http.Client();
+      onClientCreated?.call(client);
       try {
         final response = await client.send(request);
         if (response.statusCode == 401) {
@@ -281,6 +299,8 @@ class DriveDownloadManager {
 class _BookQueue {
   final String folderId;
   bool active = false;
+  bool cancelling = false;
+  http.Client? activeClient;
   final List<_DownloadJob> pending = [];
   _BookQueue(this.folderId);
 }

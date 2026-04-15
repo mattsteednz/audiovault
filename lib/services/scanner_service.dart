@@ -34,7 +34,8 @@ class ScannerService {
 
   static void _log(String msg) => debugPrint('[AudioVault:Scanner] $msg');
 
-  Future<List<Audiobook>> scanFolder(String folderPath) async {
+  Future<List<Audiobook>> scanFolder(String folderPath,
+      {Set<String> excludePaths = const {}}) async {
     final dir = Directory(folderPath);
     _log('── SCAN START ──────────────────────────────');
     _log('Root path : $folderPath');
@@ -48,7 +49,9 @@ class ScannerService {
     final entries = await dir.list().toList();
     final subdirs = entries
         .whereType<Directory>()
-        .where((d) => !p.basename(d.path).startsWith('.'))
+        .where((d) =>
+            !p.basename(d.path).startsWith('.') &&
+            !excludePaths.contains(d.path))
         .toList();
     final rootFiles = entries
         .whereType<File>()

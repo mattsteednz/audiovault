@@ -146,9 +146,16 @@ class _LibraryScreenState extends State<LibraryScreen> {
     try {
       final path = await locator<PreferencesService>().getLibraryPath();
 
+      // Exclude Drive-managed dirs from local scan to avoid double-counting
+      // books downloaded to the local library folder.
+      final driveExcludes = path != null
+          ? await locator<DriveLibraryService>().driveBookDirs()
+          : <String>{};
+
       final results = await Future.wait([
         path != null
-            ? locator<ScannerService>().scanFolder(path)
+            ? locator<ScannerService>()
+                .scanFolder(path, excludePaths: driveExcludes)
             : Future.value(<Audiobook>[]),
         locator<DriveLibraryService>().loadDriveBooks(),
       ]);

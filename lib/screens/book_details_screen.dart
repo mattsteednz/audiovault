@@ -1,8 +1,12 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:path/path.dart' as p;
 
 import '../locator.dart';
 import '../models/audiobook.dart';
+import '../services/drive_book_repository.dart';
+import '../services/drive_download_manager.dart';
 import '../services/drive_library_service.dart';
 import '../widgets/book_cover.dart';
 import 'player_screen.dart';
@@ -132,19 +136,138 @@ class _BookContent extends StatelessWidget {
   }
 }
 
-class _ActionButtons extends StatelessWidget {
+class _ActionButtons extends StatefulWidget {
   final Audiobook book;
 
   const _ActionButtons({required this.book});
 
   @override
+  State<_ActionButtons> createState() => _ActionButtonsState();
+}
+
+class _ActionButtonsState extends State<_ActionButtons> {
+  StreamSubscription<DriveDownloadEvent>? _sub;
+  bool _isDownloading = false;
+  int _totalBookBytes = 0;
+  int _completedBytes = 0;
+  int _currentFileBytes = 0;
+  int _downloadedCount = 0;
+  int _totalCount = 0;
+
+  double get _progress {
+    if (_totalBookBytes <= 0) return 0;
+    return ((_completedBytes + _currentFileBytes) / _totalBookBytes)
+        .clamp(0.0, 1.0);
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    if (widget.book.source == AudiobookSource.drive) {
+      _initDownloadState();
+      _sub = locator<DriveDownloadManager>()
+          .downloadEvents
+          .where((e) =>
+              e.folderId == widget.book.driveMetadata!.folderId &&
+              e.fileIndex != null)
+          .listen(_onEvent);
+    }
+  }
+
+  Future<void> _initDownloadState() async {
+    final folderId = widget.book.driveMetadata!.folderId;
+    final files =
+        await locator<DriveBookRepository>().getFilesForBook(folderId);
+    if (!mounted) return;
+    final done =
+        files.where((f) => f.downloadState == DriveDownloadState.done).length;
+    setState(() {
+      _totalCount = files.length;
+      _downloadedCount = done;
+      _totalBookBytes = files.fold<int>(0, (s, f) => s + f.sizeBytes);
+      _completedBytes = files
+          .where((f) => f.downloadState == DriveDownloadState.done)
+          .fold<int>(0, (s, f) => s + f.sizeBytes);
+      _isDownloading =
+          files.any((f) => f.downloadState == DriveDownloadState.downloading);
+    });
+  }
+
+  void _onEvent(DriveDownloadEvent event) {
+    if (!mounted) return;
+    setState(() {
+      if (event.state == DriveDownloadState.downloading) {
+        _isDownloading = true;
+        _currentFileBytes = event.bytesDownloaded ?? 0;
+      } else if (event.state == DriveDownloadState.done) {
+        _completedBytes += event.fileSizeBytes ?? 0;
+        _currentFileBytes = 0;
+        _downloadedCount++;
+        if (_downloadedCount >= _totalCount) _isDownloading = false;
+      } else if (event.state == DriveDownloadState.error) {
+        _currentFileBytes = 0;
+        // Keep _isDownloading; retry will fire a new downloading event.
+        // After all retries fail no more events come and it stays false.
+        _isDownloading = false;
+      }
+    });
+  }
+
+  @override
+  void dispose() {
+    _sub?.cancel();
+    super.dispose();
+  }
+
+  Future<void> _cancelAndRemove(BuildContext context) async {
+    final theme = Theme.of(context);
+    final title =
+        _isDownloading ? 'Cancel download?' : 'Remove from device?';
+    final body = _isDownloading
+        ? 'The download will be stopped and any partially downloaded '
+            'files for "${widget.book.title}" will be deleted.'
+        : 'Downloaded files for "${widget.book.title}" will be deleted. '
+            'The book will remain in your Google Drive.';
+
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text(title),
+        content: Text(body),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: Text(
+              _isDownloading ? 'Stop & remove' : 'Remove',
+              style: TextStyle(color: theme.colorScheme.error),
+            ),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !context.mounted) return;
+
+    final folderId = widget.book.driveMetadata!.folderId;
+    final dlManager = locator<DriveDownloadManager>();
+    final driveLib = locator<DriveLibraryService>();
+    await dlManager.cancelDownload(folderId);
+    await driveLib.undownloadBook(folderId);
+    if (context.mounted) Navigator.pop(context, folderId);
+  }
+
+  @override
   Widget build(BuildContext context) {
-    final isDrive = book.source == AudiobookSource.drive;
-    final downloaded = book.audioFiles.length;
-    final total = book.driveMetadata?.totalFileCount ?? 0;
+    final theme = Theme.of(context);
+    final isDrive = widget.book.source == AudiobookSource.drive;
+    final downloaded = widget.book.audioFiles.length;
+    final total = widget.book.driveMetadata?.totalFileCount ?? 0;
     final fullyDownloaded = isDrive && total > 0 && downloaded >= total;
-    final hasDownloaded = isDrive && downloaded > 0;
-    final notDownloaded = isDrive && !fullyDownloaded;
+    final hasDownloaded = isDrive && (downloaded > 0 || _isDownloading);
+    final notDownloaded = isDrive && !fullyDownloaded && !_isDownloading;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -153,19 +276,37 @@ class _ActionButtons extends StatelessWidget {
           onPressed: () {
             Navigator.pushReplacement(
               context,
-              MaterialPageRoute(builder: (_) => PlayerScreen(book: book)),
+              MaterialPageRoute(
+                  builder: (_) => PlayerScreen(book: widget.book)),
             );
           },
           icon: const Icon(Icons.play_arrow_rounded),
           label: const Text('Start listening'),
         ),
-        if (notDownloaded) ...[
+        if (_isDownloading) ...[
+          const SizedBox(height: 8),
+          OutlinedButton.icon(
+            onPressed: null, // disabled
+            icon: SizedBox(
+              width: 16,
+              height: 16,
+              child: CircularProgressIndicator(
+                value: _progress > 0 ? _progress : null,
+                strokeWidth: 2,
+                color: theme.colorScheme.primary.withValues(alpha: 0.5),
+              ),
+            ),
+            label: Text(_progress > 0
+                ? 'Downloading — ${(_progress * 100).toStringAsFixed(0)}%'
+                : 'Downloading…'),
+          ),
+        ] else if (notDownloaded) ...[
           const SizedBox(height: 8),
           OutlinedButton.icon(
             onPressed: () {
               locator<DriveLibraryService>()
-                  .startDownload(book.driveMetadata!.folderId);
-              Navigator.pop(context);
+                  .startDownload(widget.book.driveMetadata!.folderId);
+              setState(() => _isDownloading = true);
             },
             icon: const Icon(Icons.download_rounded),
             label: const Text('Download to device'),
@@ -173,59 +314,20 @@ class _ActionButtons extends StatelessWidget {
         ],
         if (hasDownloaded) ...[
           const SizedBox(height: 8),
-          _RemoveButton(book: book),
+          OutlinedButton.icon(
+            style: OutlinedButton.styleFrom(
+              foregroundColor: theme.colorScheme.error,
+              side: BorderSide(
+                  color: theme.colorScheme.error.withValues(alpha: 0.5)),
+            ),
+            onPressed: () => _cancelAndRemove(context),
+            icon: Icon(_isDownloading
+                ? Icons.cancel_outlined
+                : Icons.delete_outline_rounded),
+            label: Text(_isDownloading ? 'Stop & remove' : 'Remove from device'),
+          ),
         ],
       ],
-    );
-  }
-}
-
-class _RemoveButton extends StatelessWidget {
-  final Audiobook book;
-
-  const _RemoveButton({required this.book});
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-
-    return OutlinedButton.icon(
-      style: OutlinedButton.styleFrom(
-        foregroundColor: theme.colorScheme.error,
-        side: BorderSide(color: theme.colorScheme.error.withValues(alpha: 0.5)),
-      ),
-      onPressed: () async {
-        final confirmed = await showDialog<bool>(
-          context: context,
-          builder: (ctx) => AlertDialog(
-            title: const Text('Remove from device?'),
-            content: Text(
-              'Downloaded files for "${book.title}" will be deleted. '
-              'The book will remain in your Google Drive.',
-            ),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.pop(ctx, false),
-                child: const Text('Cancel'),
-              ),
-              TextButton(
-                onPressed: () => Navigator.pop(ctx, true),
-                child: Text(
-                  'Remove',
-                  style: TextStyle(color: theme.colorScheme.error),
-                ),
-              ),
-            ],
-          ),
-        );
-        if (confirmed == true && context.mounted) {
-          final folderId = book.driveMetadata!.folderId;
-          await locator<DriveLibraryService>().undownloadBook(folderId);
-          if (context.mounted) Navigator.pop(context, folderId);
-        }
-      },
-      icon: const Icon(Icons.delete_outline_rounded),
-      label: const Text('Remove from device'),
     );
   }
 }
