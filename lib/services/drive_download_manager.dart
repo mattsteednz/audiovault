@@ -114,7 +114,15 @@ class DriveDownloadManager {
     }).catchError((e) {
       queue.active = false;
       _activeCount--;
-      _drain();
+      if (job.retriesLeft > 0) {
+        // Re-queue at the front with one fewer retry, after a short delay.
+        Future.delayed(const Duration(seconds: 3), () {
+          queue.pending.insert(0, job.withRetry());
+          _drain();
+        });
+      } else {
+        _drain();
+      }
     });
   }
 
@@ -273,6 +281,7 @@ class _DownloadJob {
   final String fileName;
   final String localPath;
   final int sizeBytes;
+  final int retriesLeft;
 
   _DownloadJob({
     required this.folderId,
@@ -281,7 +290,18 @@ class _DownloadJob {
     required this.fileName,
     required this.localPath,
     required this.sizeBytes,
+    this.retriesLeft = 3,
   });
+
+  _DownloadJob withRetry() => _DownloadJob(
+        folderId: folderId,
+        fileIndex: fileIndex,
+        fileId: fileId,
+        fileName: fileName,
+        localPath: localPath,
+        sizeBytes: sizeBytes,
+        retriesLeft: retriesLeft - 1,
+      );
 }
 
 class _AuthException implements Exception {}
