@@ -41,19 +41,15 @@ flutter run
 
 ## Firebase / Telemetry Setup
 
-The repo ships with **placeholder** Firebase config files so the project compiles without a real Firebase project:
+This repo is configured for the AudioVault Firebase project. The config files (`android/app/google-services.json`, `ios/Runner/GoogleService-Info.plist`) are set up for `com.mattsteed.audiovault` and are not included in the repository.
 
-- `android/app/google-services.json`
-- `ios/Runner/GoogleService-Info.plist`
-
-> **Note on the `current_key` in `google-services.json`:** Static analysis tools (e.g. Amazon Q, GitGuardian) flag the `current_key` field in this file as a hardcoded credential. It is **not a secret** — it is the Firebase Android API key, which is a public client identifier [intentionally embedded in shipped apps](https://firebase.google.com/docs/projects/api-keys). Firebase security is enforced via SHA-1 certificate fingerprints and server-side rules, not by keeping this key private. The flag can be safely dismissed.
-
-The app catches Firebase init failures silently and runs without telemetry if the config is a placeholder. To enable real crash reporting and analytics:
+If you are forking this project, you will need to set up your own Firebase project:
 
 1. Create a Firebase project at [console.firebase.google.com](https://console.firebase.google.com)
-2. Register Android (`com.mattsteed.audiovault`) and iOS (`com.mattsteed.audiovault`) apps
-3. Download and replace the config files above
-4. Or run `flutterfire configure --project=<your-project-id>` to do it automatically
+2. Register Android and iOS apps with your own package identifier
+3. Run `flutterfire configure --project=<your-project-id>` to generate the config files
+
+The app catches Firebase init failures silently and runs without telemetry if no valid config is present.
 
 ## Tech Stack
 
