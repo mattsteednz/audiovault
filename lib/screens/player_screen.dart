@@ -119,7 +119,6 @@ class _PlayerScreenState extends State<PlayerScreen> {
           : (_audioHandler.player.currentIndex ?? 0);
       setState(() => _currentChapterIndex = idx);
     }
-    if (isNew) _audioHandler.play();
   }
 
   @override
