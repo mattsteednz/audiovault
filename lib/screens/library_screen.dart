@@ -162,7 +162,9 @@ class _LibraryScreenState extends State<LibraryScreen> {
       final books = results[0];
       final driveBooks = results[1];
 
-      if (path == null && driveBooks.isEmpty) {
+      final driveConfigured =
+          await locator<PreferencesService>().getDriveRootFolder() != null;
+      if (path == null && driveBooks.isEmpty && !driveConfigured) {
         setState(() {
           _error = 'No library folder set.';
           _scanning = false;
