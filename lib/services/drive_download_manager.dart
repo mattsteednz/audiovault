@@ -63,6 +63,9 @@ class DriveDownloadManager {
   /// Download all files for [folderId] — used for M4B (single file) and initial
   /// multi-file download where we want the whole book.
   Future<void> enqueueAllFiles(String folderId) async {
+    // Clear any stale pending jobs from a previous download attempt.
+    _queues[folderId]?.pending.clear();
+
     final files = await _repo.getFilesForBook(folderId);
     // Include error-state files so retrying a failed download works.
     final toQueue = files
