@@ -70,6 +70,9 @@ class _LibraryScreenState extends State<LibraryScreen> {
   String _searchQuery = '';
   final TextEditingController _searchController = TextEditingController();
 
+  // Status filter pill selection (null = show all).
+  BookStatus? _statusFilter;
+
   // Currently-active book tracking (for badge).
   String? _activePath;
   bool _isPlaying = false;
@@ -120,7 +123,16 @@ class _LibraryScreenState extends State<LibraryScreen> {
     });
   }
 
-  List<Audiobook> get _displayedBooks => filterBooks(_books ?? [], _searchQuery);
+  List<Audiobook> get _displayedBooks {
+    var books = filterBooks(_books ?? [], _searchQuery);
+    if (_statusFilter != null) {
+      books = books
+          .where((b) =>
+              (_statuses[b.path] ?? BookStatus.notStarted) == _statusFilter)
+          .toList();
+    }
+    return books;
+  }
 
   // ── Scan + sort ─────────────────────────────────────────────────────────────
 
@@ -491,18 +503,18 @@ class _LibraryScreenState extends State<LibraryScreen> {
 
     final books = _displayedBooks;
 
-    if (books.isEmpty) {
-      return Center(
+    if (books.isEmpty && _statusFilter == null && _searchQuery.isEmpty) {
+      return const Center(
         child: Padding(
-          padding: const EdgeInsets.all(32),
+          padding: EdgeInsets.all(32),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              const Icon(Icons.search_off_rounded,
+              Icon(Icons.search_off_rounded,
                   size: 64, color: Colors.grey),
-              const SizedBox(height: 16),
+              SizedBox(height: 16),
               Text(
-                'No results for "$_searchQuery".',
+                'No audiobooks found.\n\nMake sure your folder contains subfolders with audio files.',
                 textAlign: TextAlign.center,
               ),
             ],
@@ -511,7 +523,77 @@ class _LibraryScreenState extends State<LibraryScreen> {
       );
     }
 
-    return _viewMode == _ViewMode.grid ? _grid(books) : _list(books);
+    return Column(
+      children: [
+        _filterPillsRow(),
+        Expanded(
+          child: books.isEmpty
+              ? Center(
+                  child: Padding(
+                    padding: const EdgeInsets.all(32),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const Icon(Icons.search_off_rounded,
+                            size: 64, color: Colors.grey),
+                        const SizedBox(height: 16),
+                        Text(
+                          _statusFilter != null
+                              ? 'No ${_statusFilterLabel(_statusFilter!).toLowerCase()} books.'
+                              : 'No results for "$_searchQuery".',
+                          textAlign: TextAlign.center,
+                        ),
+                      ],
+                    ),
+                  ),
+                )
+              : _viewMode == _ViewMode.grid
+                  ? _grid(books)
+                  : _list(books),
+        ),
+      ],
+    );
+  }
+
+  String _statusFilterLabel(BookStatus s) => switch (s) {
+        BookStatus.notStarted => 'Not started',
+        BookStatus.inProgress => 'In progress',
+        BookStatus.finished   => 'Finished',
+      };
+
+  Widget _filterPillsRow() {
+    final theme = Theme.of(context);
+    return SingleChildScrollView(
+      scrollDirection: Axis.horizontal,
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      child: Row(
+        children: BookStatus.values.map((status) {
+          final selected = _statusFilter == status;
+          return Padding(
+            padding: const EdgeInsets.only(right: 8),
+            child: FilterChip(
+              label: Text(_statusFilterLabel(status)),
+              selected: selected,
+              onSelected: (_) => setState(() {
+                _statusFilter = selected ? null : status;
+              }),
+              showCheckmark: false,
+              avatar: Icon(
+                switch (status) {
+                  BookStatus.notStarted => Icons.radio_button_unchecked_rounded,
+                  BookStatus.inProgress => Icons.timelapse_rounded,
+                  BookStatus.finished   => Icons.check_circle_rounded,
+                },
+                size: 16,
+                color: selected
+                    ? theme.colorScheme.onSecondaryContainer
+                    : theme.colorScheme.onSurface.withValues(alpha: 0.6),
+              ),
+            ),
+          );
+        }).toList(),
+      ),
+    );
   }
 
   Widget _grid(List<Audiobook> books) {
