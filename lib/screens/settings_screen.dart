@@ -1,9 +1,13 @@
 import 'dart:io';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
+import 'package:google_sign_in/google_sign_in.dart';
 import 'package:permission_handler/permission_handler.dart';
+import '../services/drive_library_service.dart';
+import '../services/drive_service.dart';
 import '../services/enrichment_service.dart';
 import '../widgets/audio_handler_scope.dart';
+import '../widgets/drive_folder_picker.dart';
 import '../services/preferences_service.dart';
 import '../services/telemetry_service.dart';
 import '../locator.dart';
@@ -13,7 +17,10 @@ class SettingsScreen extends StatefulWidget {
   /// Called immediately when the audiobooks folder is changed.
   final VoidCallback? onFolderChanged;
 
-  const SettingsScreen({super.key, this.onFolderChanged});
+  /// Called when a Drive rescan completes (library should reload Drive books).
+  final VoidCallback? onDriveRescanned;
+
+  const SettingsScreen({super.key, this.onFolderChanged, this.onDriveRescanned});
 
   @override
   State<SettingsScreen> createState() => _SettingsScreenState();
@@ -28,6 +35,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
   bool _autoRewind = true;
   int _skipInterval = 30;
 
+  // Drive
+  bool _driveAvailable = false;
+  GoogleSignInAccount? _driveAccount;
+  String? _driveFolderName;
+  bool _driveRescanning = false;
+
   @override
   void initState() {
     super.initState();
@@ -36,12 +49,23 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
   Future<void> _load() async {
     final prefs = locator<PreferencesService>();
+    final driveService = locator<DriveService>();
+
     final path = await prefs.getLibraryPath();
     final consent = await prefs.getAnalyticsConsent();
     final themeMode = await prefs.getThemeMode();
     final enrichment = await prefs.getMetadataEnrichment();
     final autoRewind = await prefs.getAutoRewind();
     final skipInterval = await prefs.getSkipInterval();
+    final driveRoot = await prefs.getDriveRootFolder();
+    final driveAvail = await driveService.isAvailable();
+
+    GoogleSignInAccount? driveAccount;
+    if (driveAvail) {
+      driveAccount = driveService.currentAccount;
+    }
+
+    if (!mounted) return;
     setState(() {
       _folderPath = path;
       _telemetryEnabled = consent ?? false;
@@ -49,6 +73,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
       _metadataEnrichment = enrichment;
       _autoRewind = autoRewind;
       _skipInterval = skipInterval;
+      _driveAvailable = driveAvail;
+      _driveAccount = driveAccount;
+      _driveFolderName = driveRoot?.name;
     });
   }
 
@@ -80,6 +107,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
   Future<void> _setThemeMode(String value) async {
     await locator<PreferencesService>().setThemeMode(value);
+    if (!mounted) return;
     ThemeMode themeMode;
     switch (value) {
       case 'light':
@@ -144,6 +172,44 @@ class _SettingsScreenState extends State<SettingsScreen> {
         },
       ),
     );
+  }
+
+  Future<void> _connectDrive() async {
+    final driveService = locator<DriveService>();
+    final account = await driveService.signIn();
+    if (!mounted) return;
+    setState(() => _driveAccount = account);
+  }
+
+  Future<void> _disconnectDrive() async {
+    await locator<DriveService>().signOut();
+    await locator<DriveLibraryService>().removeUndownloadedBooks();
+    if (!mounted) return;
+    setState(() => _driveAccount = null);
+    widget.onDriveRescanned?.call();
+  }
+
+  Future<void> _pickDriveFolder() async {
+    final driveService = locator<DriveService>();
+    final folder = await showDriveFolderPicker(context, driveService);
+    if (folder == null || !mounted) return;
+    await locator<PreferencesService>().setDriveRootFolder(
+      folder.id,
+      folder.name,
+      isShared: folder.isShared,
+    );
+    setState(() => _driveFolderName = folder.name);
+    await _rescanDrive();
+  }
+
+  Future<void> _rescanDrive() async {
+    setState(() => _driveRescanning = true);
+    try {
+      await locator<DriveLibraryService>().rescanDrive();
+      widget.onDriveRescanned?.call();
+    } finally {
+      if (mounted) setState(() => _driveRescanning = false);
+    }
   }
 
   String get _themeModeLabel {
@@ -247,6 +313,60 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 const EdgeInsets.symmetric(horizontal: 20, vertical: 4),
           ),
           const Divider(),
+
+          // ── Cloud ────────────────────────────────────────────────────────
+          if (_driveAvailable) ...[
+            ListTile(
+              leading: const Icon(Icons.cloud_rounded),
+              title: const Text('Google Drive'),
+              subtitle: Text(
+                _driveAccount?.email ?? 'Not connected',
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
+              trailing: _driveAccount == null
+                  ? FilledButton.tonal(
+                      onPressed: _connectDrive,
+                      child: const Text('Connect'),
+                    )
+                  : TextButton(
+                      onPressed: _disconnectDrive,
+                      child: const Text('Disconnect'),
+                    ),
+              contentPadding:
+                  const EdgeInsets.symmetric(horizontal: 20, vertical: 4),
+            ),
+            if (_driveAccount != null) ...[
+              ListTile(
+                leading: const Icon(Icons.folder_shared_rounded),
+                title: const Text('Drive folder'),
+                subtitle: Text(
+                  _driveFolderName ?? 'No folder selected',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+                trailing: const Icon(Icons.chevron_right),
+                onTap: _pickDriveFolder,
+                contentPadding:
+                    const EdgeInsets.symmetric(horizontal: 20, vertical: 4),
+              ),
+              ListTile(
+                leading: _driveRescanning
+                    ? const SizedBox(
+                        width: 24,
+                        height: 24,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : const Icon(Icons.sync_rounded),
+                title: const Text('Rescan Drive'),
+                subtitle: const Text('Check for new or removed audiobooks'),
+                onTap: _driveRescanning ? null : _rescanDrive,
+                contentPadding:
+                    const EdgeInsets.symmetric(horizontal: 20, vertical: 4),
+              ),
+            ],
+            const Divider(),
+          ],
 
           // ── Privacy ──────────────────────────────────────────────────────
           ListTile(

@@ -9,6 +9,9 @@ class PreferencesService {
   static const _metadataEnrichmentKey = 'metadata_enrichment';
   static const _autoRewindKey = 'auto_rewind';
   static const _skipIntervalKey = 'skip_interval_seconds';
+  static const _driveRootFolderIdKey = 'drive_root_folder_id';
+  static const _driveRootFolderNameKey = 'drive_root_folder_name';
+  static const _driveRootIsSharedKey = 'drive_root_is_shared';
 
   SharedPreferences? _prefs;
 
@@ -70,5 +73,27 @@ class PreferencesService {
 
   Future<void> setSkipInterval(int seconds) async {
     await (await _sp).setInt(_skipIntervalKey, seconds);
+  }
+
+  Future<({String id, String name, bool isShared})?> getDriveRootFolder() async {
+    final prefs = await _sp;
+    final id = prefs.getString(_driveRootFolderIdKey);
+    final name = prefs.getString(_driveRootFolderNameKey);
+    if (id == null || name == null) return null;
+    return (id: id, name: name, isShared: prefs.getBool(_driveRootIsSharedKey) ?? false);
+  }
+
+  Future<void> setDriveRootFolder(String id, String name, {bool isShared = false}) async {
+    final prefs = await _sp;
+    await prefs.setString(_driveRootFolderIdKey, id);
+    await prefs.setString(_driveRootFolderNameKey, name);
+    await prefs.setBool(_driveRootIsSharedKey, isShared);
+  }
+
+  Future<void> clearDriveRootFolder() async {
+    final prefs = await _sp;
+    await prefs.remove(_driveRootFolderIdKey);
+    await prefs.remove(_driveRootFolderNameKey);
+    await prefs.remove(_driveRootIsSharedKey);
   }
 }

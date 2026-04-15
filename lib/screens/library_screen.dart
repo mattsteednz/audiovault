@@ -3,6 +3,9 @@ import 'package:audio_service/audio_service.dart';
 import 'package:flutter/material.dart';
 import '../models/audiobook.dart';
 import '../services/audio_handler.dart';
+import '../services/drive_book_repository.dart';
+import '../services/drive_download_manager.dart';
+import '../services/drive_library_service.dart';
 import '../services/enrichment_service.dart';
 import '../services/position_service.dart';
 import '../services/preferences_service.dart';
@@ -56,6 +59,7 @@ class LibraryScreen extends StatefulWidget {
 class _LibraryScreenState extends State<LibraryScreen> {
   List<Audiobook>? _books;       // sorted display order
   List<Audiobook>? _rawBooks;    // unsorted, straight from scanner
+  List<Audiobook> _driveBooks = []; // Drive books (unsorted)
   String? _error;
   bool _scanning = false;
   _ViewMode _viewMode = _ViewMode.grid;
@@ -70,6 +74,7 @@ class _LibraryScreenState extends State<LibraryScreen> {
   bool _isPlaying = false;
   StreamSubscription<PlaybackState>? _playbackSub;
   StreamSubscription<({String bookPath, String coverPath})>? _enrichSub;
+  StreamSubscription<DriveDownloadEvent>? _driveSub;
 
   late final AudioVaultHandler _audioHandler;
   bool _didInit = false;
@@ -82,6 +87,7 @@ class _LibraryScreenState extends State<LibraryScreen> {
       _audioHandler = AudioHandlerScope.of(context).audioHandler;
       _scan();
       _enrichSub = locator<EnrichmentService>().onCoverFetched.listen(_onCoverFetched);
+      _driveSub = locator<DriveDownloadManager>().downloadEvents.listen(_onDriveDownloadEvent);
       _playbackSub = _audioHandler.playbackState.listen((state) {
         final newPath = _audioHandler.currentBook?.path;
         if (newPath != _activePath || state.playing != _isPlaying) {
@@ -98,6 +104,7 @@ class _LibraryScreenState extends State<LibraryScreen> {
   void dispose() {
     _playbackSub?.cancel();
     _enrichSub?.cancel();
+    _driveSub?.cancel();
     _searchController.dispose();
     super.dispose();
   }
@@ -123,14 +130,24 @@ class _LibraryScreenState extends State<LibraryScreen> {
     });
     try {
       final path = await locator<PreferencesService>().getLibraryPath();
-      if (path == null) {
+
+      final results = await Future.wait([
+        path != null
+            ? locator<ScannerService>().scanFolder(path)
+            : Future.value(<Audiobook>[]),
+        locator<DriveLibraryService>().loadDriveBooks(),
+      ]);
+      final books = results[0];
+      final driveBooks = results[1];
+
+      if (path == null && driveBooks.isEmpty) {
         setState(() {
           _error = 'No library folder set.';
           _scanning = false;
         });
         return;
       }
-      final books = await locator<ScannerService>().scanFolder(path);
+
       final enrichEnabled = await locator<PreferencesService>().getMetadataEnrichment();
 
       // Apply cached enriched covers only when enrichment is enabled.
@@ -140,6 +157,7 @@ class _LibraryScreenState extends State<LibraryScreen> {
           ? await locator<EnrichmentService>().getAllEnrichedCovers()
           : <String, String>{};
       _rawBooks = applyCachedCovers(books, cachedCovers);
+      _driveBooks = driveBooks;
 
       await _applySort();
       setState(() => _scanning = false);
@@ -154,7 +172,8 @@ class _LibraryScreenState extends State<LibraryScreen> {
       if (_audioHandler.currentBook == null) {
         final lastPath = await locator<PositionService>().getLastPlayedBookPath();
         if (lastPath != null) {
-          final book = books.where((b) => b.path == lastPath).firstOrNull;
+          final allBooks = [...books, ...driveBooks];
+          final book = allBooks.where((b) => b.path == lastPath).firstOrNull;
           if (book != null) await _audioHandler.loadBook(book);
         }
       }
@@ -171,15 +190,17 @@ class _LibraryScreenState extends State<LibraryScreen> {
     final raw = _rawBooks;
     if (raw == null) return;
 
+    final all = [...raw, ..._driveBooks];
+
     final positions = await locator<PositionService>().getAllPositions();
     final played = <String, int>{
       for (final p in positions) p.bookPath: p.updatedAt
     };
 
-    final withHistory = raw.where((b) => played.containsKey(b.path)).toList()
+    final withHistory = all.where((b) => played.containsKey(b.path)).toList()
       ..sort((a, b) => (played[b.path] ?? 0).compareTo(played[a.path] ?? 0));
 
-    final withoutHistory = raw
+    final withoutHistory = all
         .where((b) => !played.containsKey(b.path))
         .toList()
       ..sort((a, b) =>
@@ -198,6 +219,46 @@ class _LibraryScreenState extends State<LibraryScreen> {
     final updated = List<Audiobook>.from(raw);
     updated[idx] = raw[idx].copyWith(coverImagePath: event.coverPath);
     _rawBooks = updated;
+    _applySort();
+  }
+
+  void _onDriveDownloadEvent(DriveDownloadEvent event) {
+    // When a file finishes downloading, reload the Drive book to pick up the
+    // new local path, and check if the book is now fully downloaded.
+    if (event.state == DriveDownloadState.done) {
+      _refreshDriveBook(event.folderId);
+    }
+  }
+
+  Future<void> _refreshDriveBook(String folderId) async {
+    final driveLibService = locator<DriveLibraryService>();
+    final driveRepo = locator<DriveBookRepository>();
+    final files = await driveRepo.getFilesForBook(folderId);
+    final allDone = files.isNotEmpty && files.every((f) => f.downloadState == DriveDownloadState.done);
+
+    Audiobook? updated;
+    if (allDone) {
+      // Promote: re-scan local dir for full metadata
+      updated = await driveLibService.promoteToLocal(folderId);
+    } else {
+      // Partial: reload from DB
+      final freshBooks = await driveLibService.loadDriveBooks();
+      updated = freshBooks.firstWhere(
+        (b) => b.driveMetadata?.folderId == folderId,
+        orElse: () => _driveBooks.firstWhere(
+          (b) => b.driveMetadata?.folderId == folderId,
+          orElse: () => _driveBooks.first,
+        ),
+      );
+    }
+    if (updated == null) return;
+
+    final idx = _driveBooks.indexWhere((b) => b.driveMetadata?.folderId == folderId);
+    if (idx != -1) {
+      _driveBooks = List<Audiobook>.from(_driveBooks)..[idx] = updated;
+    } else {
+      _driveBooks = [..._driveBooks, updated];
+    }
     _applySort();
   }
 
@@ -225,10 +286,59 @@ class _LibraryScreenState extends State<LibraryScreen> {
       );
       return;
     }
+
+    // Drive book: prompt download if no files are available locally
+    if (book.source == AudiobookSource.drive && book.audioFiles.isEmpty) {
+      _showDriveDownloadSheet(context, book);
+      return;
+    }
+
     Navigator.push(
       context,
       MaterialPageRoute(builder: (_) => PlayerScreen(book: book)),
     ).then((_) => _applySort()); // re-sort when returning from player
+  }
+
+  void _showDriveDownloadSheet(BuildContext context, Audiobook book) {
+    final folderId = book.driveMetadata!.folderId;
+    showModalBottomSheet<void>(
+      context: context,
+      builder: (ctx) => Padding(
+        padding: const EdgeInsets.all(24),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(book.title,
+                style: Theme.of(ctx).textTheme.titleMedium,
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis),
+            const SizedBox(height: 8),
+            const Text(
+                'This book hasn\'t been downloaded yet. Download it to start listening.'),
+            const SizedBox(height: 20),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.end,
+              children: [
+                TextButton(
+                  onPressed: () => Navigator.pop(ctx),
+                  child: const Text('Cancel'),
+                ),
+                const SizedBox(width: 8),
+                FilledButton.icon(
+                  icon: const Icon(Icons.download_rounded),
+                  label: const Text('Download'),
+                  onPressed: () {
+                    Navigator.pop(ctx);
+                    locator<DriveLibraryService>().startDownload(folderId);
+                  },
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
   }
 
   // ── Build ────────────────────────────────────────────────────────────────────
@@ -310,7 +420,10 @@ class _LibraryScreenState extends State<LibraryScreen> {
                   onPressed: () => Navigator.push(
                     context,
                     MaterialPageRoute(
-                      builder: (_) => SettingsScreen(onFolderChanged: _scan),
+                      builder: (_) => SettingsScreen(
+                        onFolderChanged: _scan,
+                        onDriveRescanned: _scan,
+                      ),
                     ),
                   ),
                   tooltip: 'Settings',

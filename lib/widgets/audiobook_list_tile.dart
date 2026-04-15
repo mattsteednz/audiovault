@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../models/audiobook.dart';
 import 'book_cover.dart';
+import 'drive_download_overlay.dart';
 
 class AudiobookListTile extends StatelessWidget {
   final Audiobook book;
@@ -17,7 +18,7 @@ class AudiobookListTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    return ListTile(
+    final tile = ListTile(
       onTap: onTap,
       contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
       leading: Stack(
@@ -79,6 +80,11 @@ class AudiobookListTile extends StatelessWidget {
           : null,
       isThreeLine: book.author != null,
     );
+
+    if (book.source == AudiobookSource.drive) {
+      return ClipRect(child: DriveDownloadOverlay(book: book, child: tile));
+    }
+    return tile;
   }
 
   String _formatDuration(Duration d) {

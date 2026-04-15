@@ -7,6 +7,7 @@ import 'package:just_audio/just_audio.dart';
 import 'package:path_provider/path_provider.dart';
 import '../models/audiobook.dart';
 import 'cast_server.dart';
+import 'drive_download_manager.dart';
 import 'position_service.dart';
 import 'preferences_service.dart';
 import 'telemetry_service.dart';
@@ -69,7 +70,20 @@ class AudioVaultHandler extends BaseAudioHandler {
       }
     });
     _player.currentIndexStream.listen(
-      (_) => _broadcastState(null),
+      (index) {
+        _broadcastState(null);
+        // Progressive Drive download: when chapter advances, queue next 3 files.
+        final book = _book;
+        if (book != null &&
+            book.source == AudiobookSource.drive &&
+            index != null) {
+          locator<DriveDownloadManager>().enqueueNextFiles(
+            folderId: book.driveMetadata!.folderId,
+            fromFileIndex: index,
+            count: 3,
+          );
+        }
+      },
       onError: (error, stackTrace) {
         debugPrint('[AudioVault:Player] Index stream error: $error');
       },

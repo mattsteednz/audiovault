@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../models/audiobook.dart';
 import 'book_cover.dart';
+import 'drive_download_overlay.dart';
 
 class AudiobookCard extends StatelessWidget {
   final Audiobook book;
@@ -17,7 +18,7 @@ class AudiobookCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    return Card(
+    final content = Card(
       clipBehavior: Clip.antiAlias,
       child: InkWell(
         onTap: onTap,
@@ -81,6 +82,11 @@ class AudiobookCard extends StatelessWidget {
         ),
       ),
     );
+
+    if (book.source == AudiobookSource.drive) {
+      return DriveDownloadOverlay(book: book, child: content);
+    }
+    return content;
   }
 
 }

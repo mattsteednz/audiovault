@@ -15,6 +15,9 @@ class PositionService {
   @visibleForTesting
   Future<Database> get databaseForTesting => _database;
 
+  /// Shared DB access for DriveBookRepository (same file, same instance).
+  Future<Database> get sharedDb => _database;
+
   Future<Database> get _database async {
     _db ??= await _openDb();
     return _db!;
@@ -24,18 +27,54 @@ class PositionService {
     final dir = await getApplicationDocumentsDirectory();
     return openDatabase(
       '${dir.path}/audiovault_positions.db',
-      version: 1,
-      onCreate: (db, _) => db.execute('''
-        CREATE TABLE positions (
-          book_path TEXT PRIMARY KEY,
-          chapter_index INTEGER NOT NULL DEFAULT 0,
-          position_ms INTEGER NOT NULL DEFAULT 0,
-          global_position_ms INTEGER NOT NULL DEFAULT 0,
-          total_duration_ms INTEGER NOT NULL DEFAULT 0,
-          updated_at INTEGER NOT NULL
-        )
-      '''),
+      version: 2,
+      onCreate: (db, _) async {
+        await db.execute('''
+          CREATE TABLE positions (
+            book_path TEXT PRIMARY KEY,
+            chapter_index INTEGER NOT NULL DEFAULT 0,
+            position_ms INTEGER NOT NULL DEFAULT 0,
+            global_position_ms INTEGER NOT NULL DEFAULT 0,
+            total_duration_ms INTEGER NOT NULL DEFAULT 0,
+            updated_at INTEGER NOT NULL
+          )
+        ''');
+        await _createDriveTables(db);
+      },
+      onUpgrade: (db, oldVersion, newVersion) async {
+        if (oldVersion < 2) {
+          await _createDriveTables(db);
+        }
+      },
     );
+  }
+
+  Future<void> _createDriveTables(Database db) async {
+    await db.execute('''
+      CREATE TABLE drive_books (
+        folder_id       TEXT PRIMARY KEY,
+        folder_name     TEXT NOT NULL,
+        root_folder_id  TEXT NOT NULL,
+        is_shared       INTEGER NOT NULL DEFAULT 0,
+        account_email   TEXT NOT NULL,
+        added_at        INTEGER NOT NULL,
+        cover_file_id   TEXT
+      )
+    ''');
+    await db.execute('''
+      CREATE TABLE drive_book_files (
+        folder_id       TEXT NOT NULL,
+        file_index      INTEGER NOT NULL,
+        file_id         TEXT NOT NULL,
+        file_name       TEXT NOT NULL,
+        mime_type       TEXT NOT NULL,
+        size_bytes      INTEGER NOT NULL DEFAULT 0,
+        download_state  TEXT NOT NULL DEFAULT 'none',
+        local_path      TEXT,
+        PRIMARY KEY (folder_id, file_index),
+        FOREIGN KEY (folder_id) REFERENCES drive_books(folder_id) ON DELETE CASCADE
+      )
+    ''');
   }
 
   Future<void> savePosition({

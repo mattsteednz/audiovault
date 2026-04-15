@@ -12,6 +12,24 @@ class Chapter {
   const Chapter({required this.title, required this.start});
 }
 
+/// Where the audiobook's source files originate.
+enum AudiobookSource { local, drive }
+
+/// Metadata specific to a Google Drive–sourced book.
+class DriveBookMeta {
+  final String folderId;    // Drive folder ID (the "book folder")
+  final String folderName;  // Original Drive folder name
+  final bool isShared;      // true = "Shared with me"
+  final int totalFileCount; // Total number of audio files in the Drive folder
+
+  const DriveBookMeta({
+    required this.folderId,
+    required this.folderName,
+    required this.isShared,
+    required this.totalFileCount,
+  });
+}
+
 class Audiobook {
   final String title;
   final String? author;
@@ -45,6 +63,12 @@ class Audiobook {
   /// that cannot be played by the app.
   final bool isDrmLocked;
 
+  /// Source of the audiobook files (local filesystem or Google Drive).
+  final AudiobookSource source;
+
+  /// Drive-specific metadata. Non-null only when [source] == [AudiobookSource.drive].
+  final DriveBookMeta? driveMetadata;
+
   const Audiobook({
     required this.title,
     this.author,
@@ -57,6 +81,8 @@ class Audiobook {
     this.chapters = const [],
     this.chapterNames = const [],
     this.isDrmLocked = false,
+    this.source = AudiobookSource.local,
+    this.driveMetadata,
   });
 
   /// Returns the index of the M4B embedded chapter that contains [position].
@@ -74,19 +100,31 @@ class Audiobook {
     return current;
   }
 
-  Audiobook copyWith({String? coverImagePath, Uint8List? coverImageBytes}) {
+  Audiobook copyWith({
+    String? coverImagePath,
+    Uint8List? coverImageBytes,
+    List<String>? audioFiles,
+    List<Duration>? chapterDurations,
+    List<Chapter>? chapters,
+    List<String>? chapterNames,
+    String? title,
+    String? author,
+    Duration? duration,
+  }) {
     return Audiobook(
-      title: title,
-      author: author,
-      duration: duration,
+      title: title ?? this.title,
+      author: author ?? this.author,
+      duration: duration ?? this.duration,
       path: path,
       coverImagePath: coverImagePath ?? this.coverImagePath,
       coverImageBytes: coverImageBytes ?? this.coverImageBytes,
-      audioFiles: audioFiles,
-      chapterDurations: chapterDurations,
-      chapters: chapters,
-      chapterNames: chapterNames,
+      audioFiles: audioFiles ?? this.audioFiles,
+      chapterDurations: chapterDurations ?? this.chapterDurations,
+      chapters: chapters ?? this.chapters,
+      chapterNames: chapterNames ?? this.chapterNames,
       isDrmLocked: isDrmLocked,
+      source: source,
+      driveMetadata: driveMetadata,
     );
   }
 }

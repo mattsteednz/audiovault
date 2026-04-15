@@ -70,6 +70,11 @@ class ScannerService {
     return books;
   }
 
+  /// Scans [bookDir] as a single audiobook directory. Used by Drive integration
+  /// to re-scan a downloaded book and get full metadata.
+  Future<Audiobook?> scanSingleBook(String bookDirPath) =>
+      _scanSubfolder(Directory(bookDirPath));
+
   Future<Audiobook?> _scanSubfolder(Directory dir) async {
     final name = p.basename(dir.path);
     _log('  Folder: "$name"');
