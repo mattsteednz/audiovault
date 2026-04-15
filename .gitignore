@@ -25,6 +25,7 @@ migrate_working_dir/
 
 CLAUDE.md
 .claude/
+!.claude/commands/
 
 # Flutter/Dart/Pub related
 **/doc/api/
