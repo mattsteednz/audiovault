@@ -1,6 +1,7 @@
 # Git Workflow
 
 - Default branch: `main`
+- Never commit new code directly to `main` — always create a branch first
 - Create a new branch for each feature or fix: `git checkout -b <type>/<short-description>`
   - Types: `feature/`, `fix/`, `security/`, `chore/`
 - Keep commits focused; write descriptive commit messages
