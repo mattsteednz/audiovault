@@ -157,7 +157,9 @@ class _LibraryScreenState extends State<LibraryScreen> {
             ? locator<ScannerService>()
                 .scanFolder(path, excludePaths: driveExcludes)
             : Future.value(<Audiobook>[]),
-        locator<DriveLibraryService>().loadDriveBooks(),
+        // rescanDrive syncs with Drive when connected; falls back to DB-only
+        // when offline or not configured.
+        locator<DriveLibraryService>().rescanDrive(),
       ]);
       final books = results[0];
       final driveBooks = results[1];
@@ -249,10 +251,9 @@ class _LibraryScreenState extends State<LibraryScreen> {
   }
 
   void _onDriveDownloadEvent(DriveDownloadEvent event) {
-    // When an audio file finishes downloading, reload the Drive book to pick up
-    // the new local path, and check if the book is now fully downloaded.
-    // Skip cover downloads (fileIndex == null).
-    if (event.state == DriveDownloadState.done && event.fileIndex != null) {
+    if (event.state == DriveDownloadState.done) {
+      // Refresh on audio file done OR cover done (fileIndex == null) so
+      // cover art appears as soon as it finishes downloading.
       _refreshDriveBook(event.folderId);
     }
   }
