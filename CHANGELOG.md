@@ -6,6 +6,29 @@ All notable changes to AudioVault are documented here.
 
 ---
 
+## [1.2.5] — 2026-04-16
+
+### Added
+
+- **Background library resync** — Existing books stay visible while a rescan runs. Local books stream into the list one by one as the scanner finds them; Drive books merge in at the end. Stale books are removed and the list re-sorts once at completion. The player remains fully accessible throughout.
+- **Refresh library on startup** — New toggle in Settings (off by default). When off, the app opens instantly with no scan; tap the refresh button to scan manually. When on, a full scan runs every time the app opens.
+- **Deep folder nesting** — The scanner now supports author/series grouping folders up to three levels deep (e.g. `Audiobooks / Author / Series / Book`), so libraries organised with an extra folder layer are fully indexed.
+- **Book details screen** — Long-press a book to open a details sheet showing cover, title, author, format, file count, and total duration. Drive books include download/remove controls.
+
+### Changed
+
+- **Sync indicator** — The full-width `LinearProgressIndicator` bar is replaced by a spinning refresh icon in the AppBar, keeping the visual footprint minimal while a rescan is in progress.
+
+### Fixed
+
+- **Drive: cover preserved on undownload** — Removing a downloaded Drive book no longer clears its cover art in the library list.
+- **Drive: stale download queue cleared on re-download** — Pending file entries from a previous failed download are removed before starting a fresh download attempt.
+- **Drive: cover-only overlay** — Download progress overlay on book cards is now suppressed for cover-file events so it doesn't flash "downloaded" prematurely.
+- **Drive: auto-retry failed downloads** — Individual file downloads retry up to 3 times before marking as failed; a 30-second per-chunk timeout prevents stalled transfers from blocking the queue.
+- **Drive: onboarding** — Selecting only a Drive folder on first launch no longer shows "No library folder set".
+
+---
+
 ## [1.2.0] — 2026-05-01
 
 ### Added
