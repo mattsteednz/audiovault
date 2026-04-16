@@ -34,7 +34,8 @@ class ScannerService {
   static void _log(String msg) => debugPrint('[AudioVault:Scanner] $msg');
 
   Future<List<Audiobook>> scanFolder(String folderPath,
-      {Set<String> excludePaths = const {}}) async {
+      {Set<String> excludePaths = const {},
+      void Function(Audiobook)? onBookFound}) async {
     final dir = Directory(folderPath);
     _log('── SCAN START ──────────────────────────────');
     _log('Root path : $folderPath');
@@ -64,6 +65,9 @@ class ScannerService {
     final books = <Audiobook>[];
     for (final subdir in subdirs) {
       final results = await _scanAsBookOrAuthorFolder(subdir);
+      for (final book in results) {
+        onBookFound?.call(book);
+      }
       books.addAll(results);
     }
 

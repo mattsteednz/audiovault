@@ -64,7 +64,8 @@ class _LibraryScreenState extends State<LibraryScreen> {
   List<Audiobook> _driveBooks = []; // Drive books (unsorted)
   Map<String, BookStatus> _statuses = {};
   String? _error;
-  bool _scanning = false;
+  bool _syncing = false;
+  Set<String> _syncFoundPaths = {};
   _ViewMode _viewMode = _ViewMode.grid;
 
   // Search state.
@@ -138,10 +139,33 @@ class _LibraryScreenState extends State<LibraryScreen> {
 
   // ── Scan + sort ─────────────────────────────────────────────────────────────
 
+  /// Called by the scanner as each book is found. Appends it to the visible
+  /// list immediately so the user sees books appear one by one during a scan.
+  void _onBookFound(Audiobook book) {
+    _syncFoundPaths.add(book.path);
+    _rawBooks ??= [];
+    final idx = _rawBooks!.indexWhere((b) => b.path == book.path);
+    if (idx == -1) {
+      // New book — optimistic append to both lists (sort applied at end).
+      setState(() {
+        _rawBooks = [..._rawBooks!, book];
+        _books = [...(_books ?? []), book];
+      });
+    } else {
+      // Existing book — refresh metadata in place without reordering.
+      setState(() {
+        _rawBooks = List.from(_rawBooks!)..[idx] = book;
+      });
+    }
+  }
+
   Future<void> _scan() async {
+    _syncFoundPaths = {};
     setState(() {
-      _scanning = true;
+      _syncing = true;
       _error = null;
+      // Intentionally NOT clearing _rawBooks or _books so existing
+      // books remain visible while the resync runs in the background.
     });
     try {
       final path = await locator<PreferencesService>().getLibraryPath();
@@ -154,22 +178,32 @@ class _LibraryScreenState extends State<LibraryScreen> {
 
       final results = await Future.wait([
         path != null
-            ? locator<ScannerService>()
-                .scanFolder(path, excludePaths: driveExcludes)
+            ? locator<ScannerService>().scanFolder(
+                path,
+                excludePaths: driveExcludes,
+                onBookFound: _onBookFound, // streams books into UI as found
+              )
             : Future.value(<Audiobook>[]),
         // rescanDrive syncs with Drive when connected; falls back to DB-only
         // when offline or not configured.
         locator<DriveLibraryService>().rescanDrive(),
       ]);
-      final books = results[0];
       final driveBooks = results[1];
+
+      // Remove stale local books that were not found in this scan pass.
+      final drivePaths = driveBooks.map((b) => b.path).toSet();
+      _rawBooks = (_rawBooks ?? [])
+          .where((b) =>
+              drivePaths.contains(b.path) ||
+              _syncFoundPaths.contains(b.path))
+          .toList();
 
       final driveConfigured =
           await locator<PreferencesService>().getDriveRootFolder() != null;
       if (path == null && driveBooks.isEmpty && !driveConfigured) {
         setState(() {
           _error = 'No library folder set.';
-          _scanning = false;
+          _syncing = false;
         });
         return;
       }
@@ -182,11 +216,12 @@ class _LibraryScreenState extends State<LibraryScreen> {
       final cachedCovers = enrichEnabled
           ? await locator<EnrichmentService>().getAllEnrichedCovers()
           : <String, String>{};
-      _rawBooks = applyCachedCovers(books, cachedCovers);
+      _rawBooks = applyCachedCovers(_rawBooks ?? [], cachedCovers);
       _driveBooks = driveBooks;
 
+      // Single DB read + full sort after all books are in.
       await _applySort();
-      setState(() => _scanning = false);
+      setState(() => _syncing = false);
 
       // Start background enrichment for books missing covers.
       if (enrichEnabled) {
@@ -198,7 +233,7 @@ class _LibraryScreenState extends State<LibraryScreen> {
       if (_audioHandler.currentBook == null) {
         final lastPath = await locator<PositionService>().getLastPlayedBookPath();
         if (lastPath != null) {
-          final allBooks = [...books, ...driveBooks];
+          final allBooks = [...(_rawBooks ?? []), ...driveBooks];
           final book = allBooks.where((b) => b.path == lastPath).firstOrNull;
           if (book != null) await _audioHandler.loadBook(book);
         }
@@ -206,7 +241,7 @@ class _LibraryScreenState extends State<LibraryScreen> {
     } catch (e) {
       setState(() {
         _error = 'Scan failed: $e';
-        _scanning = false;
+        _syncing = false;
       });
     }
   }
@@ -496,8 +531,14 @@ class _LibraryScreenState extends State<LibraryScreen> {
                       _viewMode == _ViewMode.grid ? 'List view' : 'Grid view',
                 ),
                 IconButton(
-                  icon: const Icon(Icons.refresh_rounded),
-                  onPressed: _scanning ? null : _scan,
+                  icon: _syncing
+                      ? const SizedBox(
+                          width: 20,
+                          height: 20,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : const Icon(Icons.refresh_rounded),
+                  onPressed: _syncing ? null : _scan,
                   tooltip: 'Rescan',
                 ),
                 IconButton(
@@ -517,6 +558,7 @@ class _LibraryScreenState extends State<LibraryScreen> {
       ),
       body: Column(
         children: [
+          if (_syncing) const LinearProgressIndicator(),
           Expanded(child: _body()),
           _MiniPlayer(),
         ],
@@ -525,19 +567,6 @@ class _LibraryScreenState extends State<LibraryScreen> {
   }
 
   Widget _body() {
-    if (_scanning) {
-      return const Center(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            CircularProgressIndicator(),
-            SizedBox(height: 16),
-            Text('Scanning your library…'),
-          ],
-        ),
-      );
-    }
-
     if (_error != null) {
       return Center(
         child: Padding(
@@ -552,19 +581,28 @@ class _LibraryScreenState extends State<LibraryScreen> {
     final allBooks = _books ?? [];
 
     if (allBooks.isEmpty) {
-      return const Center(
+      // Show a scanning message while the first scan is in progress,
+      // or the normal empty-library message once scanning has finished.
+      return Center(
         child: Padding(
-          padding: EdgeInsets.all(32),
+          padding: const EdgeInsets.all(32),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Icon(Icons.library_music_outlined,
-                  size: 64, color: Colors.grey),
-              SizedBox(height: 16),
-              Text(
-                'No audiobooks found.\n\nMake sure your folder contains subfolders with audio files.',
-                textAlign: TextAlign.center,
-              ),
+              if (_syncing) ...[
+                const CircularProgressIndicator(),
+                const SizedBox(height: 16),
+                const Text('Scanning your library…',
+                    textAlign: TextAlign.center),
+              ] else ...[
+                const Icon(Icons.library_music_outlined,
+                    size: 64, color: Colors.grey),
+                const SizedBox(height: 16),
+                const Text(
+                  'No audiobooks found.\n\nMake sure your folder contains subfolders with audio files.',
+                  textAlign: TextAlign.center,
+                ),
+              ],
             ],
           ),
         ),
