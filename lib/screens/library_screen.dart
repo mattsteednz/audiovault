@@ -92,7 +92,7 @@ class _LibraryScreenState extends State<LibraryScreen> {
     if (!_didInit) {
       _didInit = true;
       _audioHandler = AudioHandlerScope.of(context).audioHandler;
-      _scan();
+      _initLibrary();
       _enrichSub = locator<EnrichmentService>().onCoverFetched.listen(_onCoverFetched);
       _driveSub = locator<DriveDownloadManager>().downloadEvents.listen(_onDriveDownloadEvent);
       _playbackSub = _audioHandler.playbackState.listen((state) {
@@ -138,6 +138,12 @@ class _LibraryScreenState extends State<LibraryScreen> {
   }
 
   // ── Scan + sort ─────────────────────────────────────────────────────────────
+
+  Future<void> _initLibrary() async {
+    final shouldScan =
+        await locator<PreferencesService>().getRefreshOnStartup();
+    if (shouldScan) _scan();
+  }
 
   /// Called by the scanner as each book is found. Appends it to the visible
   /// list immediately so the user sees books appear one by one during a scan.
@@ -558,7 +564,6 @@ class _LibraryScreenState extends State<LibraryScreen> {
       ),
       body: Column(
         children: [
-          if (_syncing) const LinearProgressIndicator(),
           Expanded(child: _body()),
           _MiniPlayer(),
         ],

@@ -41,6 +41,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   String? _driveFolderName;
   bool _driveRescanning = false;
   bool _removeWhenFinished = false;
+  bool _refreshOnStartup = false;
 
   @override
   void initState() {
@@ -61,6 +62,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     final driveRoot = await prefs.getDriveRootFolder();
     final driveAvail = await driveService.isAvailable();
     final removeWhenFinished = await prefs.getRemoveWhenFinished();
+    final refreshOnStartup = await prefs.getRefreshOnStartup();
 
     GoogleSignInAccount? driveAccount;
     if (driveAvail) {
@@ -79,6 +81,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
       _driveAccount = driveAccount;
       _driveFolderName = driveRoot?.name;
       _removeWhenFinished = removeWhenFinished;
+      _refreshOnStartup = refreshOnStartup;
     });
   }
 
@@ -210,6 +213,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
     setState(() => _removeWhenFinished = value);
   }
 
+  Future<void> _setRefreshOnStartup(bool value) async {
+    await locator<PreferencesService>().setRefreshOnStartup(value);
+    setState(() => _refreshOnStartup = value);
+  }
+
   Future<void> _rescanDrive() async {
     setState(() => _driveRescanning = true);
     try {
@@ -283,6 +291,19 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   )
                 : null,
             onTap: _pickingFolder ? null : _selectFolder,
+            contentPadding:
+                const EdgeInsets.symmetric(horizontal: 20, vertical: 4),
+          ),
+          ListTile(
+            leading: const Icon(Icons.sync_rounded),
+            title: const Text('Refresh library on startup'),
+            subtitle: const Text(
+                'Scan for new or removed books each time the app opens'),
+            trailing: Switch(
+              value: _refreshOnStartup,
+              onChanged: _setRefreshOnStartup,
+            ),
+            onTap: () => _setRefreshOnStartup(!_refreshOnStartup),
             contentPadding:
                 const EdgeInsets.symmetric(horizontal: 20, vertical: 4),
           ),
