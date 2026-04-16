@@ -246,6 +246,8 @@ class AudioVaultHandler extends BaseAudioHandler {
       // Fall back to local playback.
       _casting = false;
       _castingController.add(false);
+      _castSessionSub?.cancel();
+      _castSessionSub = null;
       _castStatusSub?.cancel();
       _castPositionSub?.cancel();
       _saveTimer?.cancel();
@@ -265,6 +267,8 @@ class AudioVaultHandler extends BaseAudioHandler {
           GoogleCastRemoteMediaClient.instance.playerPosition;
     } catch (_) {}
 
+    _castSessionSub?.cancel();
+    _castSessionSub = null;
     _castStatusSub?.cancel();
     _castPositionSub?.cancel();
     _saveTimer?.cancel();
@@ -577,7 +581,7 @@ class AudioVaultHandler extends BaseAudioHandler {
     }
     // Multi-file: seek to next file
     final idx = _player.currentIndex ?? 0;
-    final len = _player.sequence?.length ?? 1;
+    final len = _player.sequence.length;
     if (idx < len - 1) await _player.seekToNext();
   }
 
