@@ -64,8 +64,8 @@ class ScannerService {
 
     final books = <Audiobook>[];
     for (final subdir in subdirs) {
-      final book = await _scanSubfolder(subdir);
-      if (book != null) books.add(book);
+      final results = await _scanAsBookOrAuthorFolder(subdir);
+      books.addAll(results);
     }
 
     books.sort((a, b) => a.title.toLowerCase().compareTo(b.title.toLowerCase()));
@@ -77,6 +77,41 @@ class ScannerService {
   /// to re-scan a downloaded book and get full metadata.
   Future<Audiobook?> scanSingleBook(String bookDirPath) =>
       _scanSubfolder(Directory(bookDirPath));
+
+  /// Tries to scan [dir] as a single book. If that fails (no audio files
+  /// directly inside), treats it as an author/grouping folder and recurses into
+  /// its subdirectories — up to [remainingDepth] extra levels deep.
+  Future<List<Audiobook>> _scanAsBookOrAuthorFolder(Directory dir,
+      {int remainingDepth = 2}) async {
+    final book = await _scanSubfolder(dir);
+    if (book != null) return [book];
+
+    if (remainingDepth <= 0) return const [];
+
+    // No audio files directly in dir — check whether it has subdirectories
+    // that might be individual books (author/series folder pattern).
+    List<FileSystemEntity> entries;
+    try {
+      entries = await dir.list().toList();
+    } catch (e) {
+      return const [];
+    }
+    final subdirs = entries
+        .whereType<Directory>()
+        .where((d) => !p.basename(d.path).startsWith('.'))
+        .toList();
+    if (subdirs.isEmpty) return const [];
+
+    _log('  "${p.basename(dir.path)}" has no audio — treating as grouping folder '
+        '(${subdirs.length} sub-folder(s), depth remaining: $remainingDepth)');
+    final books = <Audiobook>[];
+    for (final sub in subdirs) {
+      final results = await _scanAsBookOrAuthorFolder(sub,
+          remainingDepth: remainingDepth - 1);
+      books.addAll(results);
+    }
+    return books;
+  }
 
   Future<Audiobook?> _scanSubfolder(Directory dir) async {
     final name = p.basename(dir.path);
