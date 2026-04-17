@@ -1,5 +1,7 @@
 import 'dart:async';
+import 'dart:io' show SocketException;
 import 'package:audio_service/audio_service.dart';
+import 'package:flutter/foundation.dart' show debugPrint;
 import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:flutter/material.dart';
 import '../models/audiobook.dart';
@@ -81,6 +83,69 @@ List<Audiobook> sortByLastPlayed(
   return [...withHistory, ...withoutHistory];
 }
 
+/// Content to show when the library grid is empty, based on what the user
+/// has configured. Pure function consumed by the library empty-state widget.
+///
+/// - `hasLocalFolder` and `hasDriveConfigured` reflect Settings state.
+/// - `showCta` is true when the user has done zero configuration — the empty
+///   state should nudge them into Settings.
+({String title, String message, bool showCta}) emptyStateContent({
+  required bool hasLocalFolder,
+  required bool hasDriveConfigured,
+}) {
+  if (!hasLocalFolder && !hasDriveConfigured) {
+    return (
+      title: 'Your library is empty',
+      message:
+          'Add a folder from your device or connect Google Drive to get started.',
+      showCta: true,
+    );
+  }
+  if (hasDriveConfigured && !hasLocalFolder) {
+    return (
+      title: 'No audiobooks on Drive',
+      message:
+          "We didn't find any audiobooks in the Drive folder you selected. "
+          'Check the folder in Settings or add more books.',
+      showCta: false,
+    );
+  }
+  // Local folder configured (with or without Drive).
+  return (
+    title: 'No audiobooks found',
+    message: 'Make sure your library folder contains subfolders with audio '
+        'files, then pull to refresh.',
+    showCta: false,
+  );
+}
+
+/// Maps a scan-time exception to a user-friendly error message.
+/// Permission issues, missing folders, and generic failures each get a
+/// distinct phrasing that suggests a next action.
+String friendlyScanError(Object error) {
+  final s = error.toString().toLowerCase();
+  if (s.contains('permission denied') ||
+      s.contains('operation not permitted') ||
+      s.contains('errno = 13') ||
+      s.contains('errno = 1,')) {
+    return 'Storage access denied. Grant permission in Settings and try again.';
+  }
+  if (s.contains('no such file') ||
+      s.contains('cannot find the file') ||
+      s.contains('cannot find the path') ||
+      s.contains('errno = 2') ||
+      s.contains('errno = 3,')) {
+    return "Library folder can't be found. It may have been moved or deleted — "
+        'choose a new folder in Settings.';
+  }
+  if (error is SocketException ||
+      s.contains('network') ||
+      s.contains('connection')) {
+    return "Couldn't reach Google Drive. Check your network and try again.";
+  }
+  return "Couldn't scan the library. Try again, or check your folder in Settings.";
+}
+
 /// Human-readable byte size string (B / KB / MB / GB).
 String formatBytes(int bytes) {
   if (bytes < 1024) return '$bytes B';
@@ -105,6 +170,8 @@ class _LibraryScreenState extends State<LibraryScreen> {
   Map<String, BookStatus> _statuses = {};
   String? _error;
   bool _syncing = false;
+  bool _hasLocalFolder = false;
+  bool _hasDriveConfigured = false;
   Set<String> _syncFoundPaths = {};
   _ViewMode _viewMode = _ViewMode.grid;
 
@@ -240,9 +307,10 @@ class _LibraryScreenState extends State<LibraryScreen> {
 
       final driveConfigured =
           await locator<PreferencesService>().getDriveRootFolder() != null;
+      _hasLocalFolder = path != null;
+      _hasDriveConfigured = driveConfigured;
       if (path == null && driveBooks.isEmpty && !driveConfigured) {
         setState(() {
-          _error = 'No library folder set.';
           _syncing = false;
         });
         return;
@@ -278,9 +346,10 @@ class _LibraryScreenState extends State<LibraryScreen> {
           if (book != null) await _audioHandler.loadBook(book);
         }
       }
-    } catch (e) {
+    } catch (e, st) {
+      debugPrint('[LibraryScreen] scan failed: $e\n$st');
       setState(() {
-        _error = 'Scan failed: $e';
+        _error = friendlyScanError(e);
         _syncing = false;
       });
     }
@@ -601,26 +670,55 @@ class _LibraryScreenState extends State<LibraryScreen> {
     final allBooks = _books ?? [];
 
     if (allBooks.isEmpty) {
-      // Show a scanning message while the first scan is in progress,
-      // or the normal empty-library message once scanning has finished.
+      if (_syncing) {
+        return const Center(
+          child: Padding(
+            padding: EdgeInsets.all(32),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                CircularProgressIndicator(),
+                SizedBox(height: 16),
+                Text('Scanning your library…', textAlign: TextAlign.center),
+              ],
+            ),
+          ),
+        );
+      }
+      final content = emptyStateContent(
+        hasLocalFolder: _hasLocalFolder,
+        hasDriveConfigured: _hasDriveConfigured,
+      );
       return Center(
         child: Padding(
           padding: const EdgeInsets.all(32),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              if (_syncing) ...[
-                const CircularProgressIndicator(),
-                const SizedBox(height: 16),
-                const Text('Scanning your library…',
-                    textAlign: TextAlign.center),
-              ] else ...[
-                const Icon(Icons.library_music_outlined,
-                    size: 64, color: Colors.grey),
-                const SizedBox(height: 16),
-                const Text(
-                  'No audiobooks found.\n\nMake sure your folder contains subfolders with audio files.',
-                  textAlign: TextAlign.center,
+              const Icon(Icons.library_music_outlined,
+                  size: 64, color: Colors.grey),
+              const SizedBox(height: 16),
+              Text(
+                content.title,
+                style: Theme.of(context).textTheme.titleMedium,
+                textAlign: TextAlign.center,
+              ),
+              const SizedBox(height: 8),
+              Text(content.message, textAlign: TextAlign.center),
+              if (content.showCta) ...[
+                const SizedBox(height: 20),
+                FilledButton.icon(
+                  icon: const Icon(Icons.settings_rounded),
+                  label: const Text('Open Settings'),
+                  onPressed: () => Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) => SettingsScreen(
+                        onFolderChanged: _scan,
+                        onDriveRescanned: _scan,
+                      ),
+                    ),
+                  ),
                 ),
               ],
             ],

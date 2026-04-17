@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:audiovault/models/audiobook.dart';
 import 'package:audiovault/screens/library_screen.dart';
@@ -92,6 +94,77 @@ void main() {
       final positions = [_progress('/library/Ghost', 999)];
       final result = sortByLastPlayed(books, positions);
       expect(result.map((b) => b.title), ['A']);
+    });
+  });
+
+  group('friendlyScanError', () {
+    test('permission-denied messages are caught', () {
+      expect(
+        friendlyScanError(const FileSystemException(
+            'Permission denied', '/storage/emulated/0')),
+        contains('Storage access denied'),
+      );
+      expect(
+        friendlyScanError('errno = 13, Permission denied'),
+        contains('Storage access denied'),
+      );
+    });
+
+    test('missing-folder messages are caught', () {
+      expect(
+        friendlyScanError(
+            const FileSystemException('No such file or directory', '/bad')),
+        contains("can't be found"),
+      );
+      expect(
+        friendlyScanError('The system cannot find the path specified'),
+        contains("can't be found"),
+      );
+    });
+
+    test('network errors map to Drive-specific copy', () {
+      expect(
+        friendlyScanError(const SocketException('Failed host lookup')),
+        contains("Couldn't reach Google Drive"),
+      );
+    });
+
+    test('unknown errors get a generic fallback', () {
+      expect(
+        friendlyScanError(StateError('something weird')),
+        contains("Couldn't scan the library"),
+      );
+    });
+
+    test('never returns raw exception class names', () {
+      final result =
+          friendlyScanError(const FileSystemException('boom', '/x'));
+      expect(result, isNot(contains('FileSystemException')));
+    });
+  });
+
+  group('emptyStateContent', () {
+    test('zero configuration shows the first-run CTA', () {
+      final r = emptyStateContent(
+          hasLocalFolder: false, hasDriveConfigured: false);
+      expect(r.title, 'Your library is empty');
+      expect(r.showCta, isTrue);
+    });
+
+    test('Drive-only configuration omits the CTA and uses Drive copy', () {
+      final r = emptyStateContent(
+          hasLocalFolder: false, hasDriveConfigured: true);
+      expect(r.title, 'No audiobooks on Drive');
+      expect(r.showCta, isFalse);
+    });
+
+    test('local folder configured (with or without Drive) uses local copy', () {
+      for (final drive in [true, false]) {
+        final r = emptyStateContent(
+            hasLocalFolder: true, hasDriveConfigured: drive);
+        expect(r.title, 'No audiobooks found');
+        expect(r.showCta, isFalse);
+      }
     });
   });
 

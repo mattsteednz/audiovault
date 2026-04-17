@@ -160,7 +160,17 @@ class EnrichmentService {
             'https://covers.openlibrary.org/b/id/$coverId-L.jpg'))
         .timeout(const Duration(seconds: 15));
 
-    if (coverResp.statusCode != 200) return null;
+    if (!isValidCoverResponse(
+      statusCode: coverResp.statusCode,
+      contentType: coverResp.headers['content-type'],
+      contentLength: coverResp.bodyBytes.length,
+    )) {
+      _log('Rejecting cover response: '
+          'status=${coverResp.statusCode} '
+          'type=${coverResp.headers['content-type']} '
+          'bytes=${coverResp.bodyBytes.length}');
+      return null;
+    }
 
     final cacheDir = await getApplicationCacheDirectory();
     final coversDir = Directory('${cacheDir.path}/covers');
@@ -197,4 +207,28 @@ class EnrichmentService {
       whereArgs: [bookPath],
     );
   }
+}
+
+/// Maximum accepted cover-image size (bytes). Covers larger than this are
+/// rejected to avoid disk bloat and catch mis-served pages.
+const int maxCoverBytes = 10 * 1024 * 1024; // 10 MB
+
+/// Minimum accepted cover-image size (bytes). Tiny responses are usually
+/// placeholders or error pages.
+const int minCoverBytes = 128;
+
+/// Returns true if an HTTP response is a plausible image to save as a cover.
+/// Checks status == 200, content-type starts with `image/`, and body size is
+/// within [minCoverBytes]..[maxCoverBytes]. Pure function.
+bool isValidCoverResponse({
+  required int statusCode,
+  required String? contentType,
+  required int contentLength,
+}) {
+  if (statusCode != 200) return false;
+  if (contentType == null) return false;
+  if (!contentType.toLowerCase().startsWith('image/')) return false;
+  if (contentLength < minCoverBytes) return false;
+  if (contentLength > maxCoverBytes) return false;
+  return true;
 }
