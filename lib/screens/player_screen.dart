@@ -140,12 +140,12 @@ class _PlayerScreenState extends State<PlayerScreen> {
     if (opt.duration == null) return; // "Off"
     setState(() => _sleepRemaining = opt.duration!);
     _sleepTimer = Timer.periodic(const Duration(seconds: 1), (_) {
-      final next = _sleepRemaining - const Duration(seconds: 1);
-      if (next <= Duration.zero) {
+      final tick = sleepTimerTick(_sleepRemaining);
+      if (tick.shouldFire) {
         _audioHandler.pause();
         _cancelTimer();
       } else {
-        setState(() => _sleepRemaining = next);
+        setState(() => _sleepRemaining = tick.next);
       }
     });
   }
@@ -300,12 +300,6 @@ class _PlayerScreenState extends State<PlayerScreen> {
 
   // ── Speed ────────────────────────────────────────────────────────────────────
 
-  /// Formats a speed value as e.g. "1.0×", "1.25×", "0.75×".
-  static String _fmtSpeed(double s) {
-    final str = s.toStringAsFixed(2);
-    return '${str.endsWith('0') ? s.toStringAsFixed(1) : str}×';
-  }
-
   void _showSpeedDialog() {
     double tempSpeed = _speed;
     final originalSpeed = _speed;
@@ -321,7 +315,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
               mainAxisSize: MainAxisSize.min,
               children: [
                 Text(
-                  _fmtSpeed(tempSpeed),
+                  fmtSpeed(tempSpeed),
                   style: theme.textTheme.headlineMedium
                       ?.copyWith(fontWeight: FontWeight.bold),
                 ),
@@ -342,7 +336,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
                   children: _commonSpeeds.map((s) {
                     final active = (tempSpeed - s).abs() < 0.01;
                     return ChoiceChip(
-                      label: Text(_fmtSpeed(s)),
+                      label: Text(fmtSpeed(s)),
                       selected: active,
                       onSelected: (_) {
                         setDialogState(() => tempSpeed = s);
@@ -439,17 +433,9 @@ class _PlayerScreenState extends State<PlayerScreen> {
 
   // ── Helpers ─────────────────────────────────────────────────────────────────
 
-  String _fmtHM(Duration d) {
-    if (d < Duration.zero) d = Duration.zero;
-    final h = d.inHours;
-    final m = d.inMinutes.remainder(60).toString().padLeft(2, '0');
-    final s = d.inSeconds.remainder(60).toString().padLeft(2, '0');
-    return h > 0 ? '$h:$m:$s' : '$m:$s';
-  }
-
   String get _timerLabel {
     if (_stopAtChapterEnd) return 'End of ch.';
-    if (_sleepTimer != null) return _fmtHM(_sleepRemaining);
+    if (_sleepTimer != null) return fmtHM(_sleepRemaining);
     return 'Off';
   }
 
@@ -574,7 +560,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
           ),
           trailing: dur != null && dur > Duration.zero
               ? Text(
-                  _fmtHM(dur),
+                  fmtHM(dur),
                   style: theme.textTheme.bodySmall?.copyWith(
                     color: theme.colorScheme.onSurface.withValues(alpha: 0.55),
                   ),
@@ -830,9 +816,9 @@ class _PlayerScreenState extends State<PlayerScreen> {
                 child: Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    Text(_fmtHM(chapterElapsed),
+                    Text(fmtHM(chapterElapsed),
                         style: theme.textTheme.bodySmall),
-                    Text('-${_fmtHM(chapterRemaining)}',
+                    Text('-${fmtHM(chapterRemaining)}',
                         style: theme.textTheme.bodySmall),
                   ],
                 ),
@@ -919,7 +905,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
           onTap: _showSpeedDialog,
           child: _chip(
             icon: Icons.speed_rounded,
-            label: _fmtSpeed(_speed),
+            label: fmtSpeed(_speed),
             active: (_speed - 1.0).abs() > 0.001,
             theme: theme,
           ),
@@ -983,4 +969,33 @@ class _PlayerScreenState extends State<PlayerScreen> {
       ]),
     );
   }
+}
+
+// ── Pure helpers (testable) ───────────────────────────────────────────────────
+
+/// Formats a speed value as e.g. "1.0×", "1.25×", "0.75×".
+/// Values divisible by 0.1 get one decimal; others get two.
+String fmtSpeed(double s) {
+  final str = s.toStringAsFixed(2);
+  return '${str.endsWith('0') ? s.toStringAsFixed(1) : str}×';
+}
+
+/// Formats a duration as `H:MM:SS` (if ≥ 1 hour) or `MM:SS`.
+/// Negative durations are clamped to zero.
+String fmtHM(Duration d) {
+  if (d < Duration.zero) d = Duration.zero;
+  final h = d.inHours;
+  final m = d.inMinutes.remainder(60).toString().padLeft(2, '0');
+  final s = d.inSeconds.remainder(60).toString().padLeft(2, '0');
+  return h > 0 ? '$h:$m:$s' : '$m:$s';
+}
+
+/// Result of a sleep-timer tick: the new remaining time and whether the
+/// timer should fire (pause playback). Pure function — no side effects.
+({Duration next, bool shouldFire}) sleepTimerTick(Duration current) {
+  final next = current - const Duration(seconds: 1);
+  if (next <= Duration.zero) {
+    return (next: Duration.zero, shouldFire: true);
+  }
+  return (next: next, shouldFire: false);
 }
