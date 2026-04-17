@@ -8,6 +8,7 @@ import 'package:path_provider/path_provider.dart';
 import '../models/audiobook.dart';
 import 'cast_server.dart';
 import 'drive_library_service.dart';
+import 'position_persister.dart' as pp;
 import 'position_service.dart';
 import 'preferences_service.dart';
 import 'telemetry_service.dart';
@@ -17,7 +18,7 @@ class AudioVaultHandler extends BaseAudioHandler {
   final _player = AudioPlayer();
   Audiobook? _book;
   Uri? _artUri;
-  Timer? _saveTimer;
+  late final pp.PositionPersister _persister;
   DateTime? _lastPausedAt;
   Timer? _removalTimer; // 1-min delay before deleting Drive files on finish
 
@@ -52,6 +53,17 @@ class AudioVaultHandler extends BaseAudioHandler {
       _effectiveDurationController.stream;
 
   AudioVaultHandler() {
+    _persister = pp.PositionPersister(
+      positionService: locator<PositionService>(),
+      getBook: () => _book,
+      readPosition: () => (
+        chapterIndex: _player.currentIndex ?? 0,
+        position: _casting
+            ? GoogleCastRemoteMediaClient.instance.playerPosition
+            : _player.position,
+      ),
+    );
+
     locator<PreferencesService>().getSkipInterval().then((s) {
       _skipInterval = s;
     });
@@ -91,19 +103,17 @@ class AudioVaultHandler extends BaseAudioHandler {
     _player.playingStream.listen((playing) {
       if (_casting) return; // Cast save is handled separately.
       if (playing) {
-        _saveTimer ??= Timer.periodic(
-            const Duration(seconds: 5), (_) => _savePosition());
+        _persister.startPeriodic();
       } else {
-        _saveTimer?.cancel();
-        _saveTimer = null;
-        _savePosition(); // immediate save on pause
+        _persister.stopPeriodic();
+        _persister.save(); // immediate save on pause
       }
     });
 
     // Handle playback completion (end of last file / M4B).
     _player.processingStateStream.listen((state) {
       if (state == ProcessingState.completed) {
-        _savePosition();
+        _persister.save();
         _onPlaybackCompleted();
       }
     });
@@ -172,9 +182,8 @@ class AudioVaultHandler extends BaseAudioHandler {
     });
 
     // Start periodic position save during Cast playback.
-    _saveTimer?.cancel();
-    _saveTimer = Timer.periodic(
-        const Duration(seconds: 5), (_) => _saveCastPosition());
+    _persister.stopPeriodic();
+    _persister.startPeriodic();
 
     try {
       if (_book!.audioFiles.length == 1) {
@@ -250,8 +259,7 @@ class AudioVaultHandler extends BaseAudioHandler {
       _castSessionSub = null;
       _castStatusSub?.cancel();
       _castPositionSub?.cancel();
-      _saveTimer?.cancel();
-      _saveTimer = null;
+      _persister.stopPeriodic();
       await _castServer.stop();
       if (wasPlaying) _player.play();
     }
@@ -271,8 +279,7 @@ class AudioVaultHandler extends BaseAudioHandler {
     _castSessionSub = null;
     _castStatusSub?.cancel();
     _castPositionSub?.cancel();
-    _saveTimer?.cancel();
-    _saveTimer = null;
+    _persister.stopPeriodic();
     _castStatusSub = null;
     _castPositionSub = null;
 
@@ -347,23 +354,7 @@ class AudioVaultHandler extends BaseAudioHandler {
 
   Future<void> _saveCastPosition() async {
     if (_book == null || !_casting) return;
-    final pos =
-        GoogleCastRemoteMediaClient.instance.playerPosition;
-    // For multi-file, we'd need to know the current queue item index.
-    // For now, use currentIndex from player (set at cast start) for single-file,
-    // or approximate from queue.
-    final idx = _player.currentIndex ?? 0;
-    await locator<PositionService>().savePosition(
-      bookPath: _book!.path,
-      chapterIndex: idx,
-      position: pos,
-      globalPositionMs: calculateGlobalPosition(
-        chapterIndex: idx,
-        chapterPosition: pos,
-        chapterDurations: _book?.chapterDurations ?? [],
-      ),
-      totalDurationMs: _book!.duration?.inMilliseconds ?? 0,
-    );
+    await _persister.save();
   }
 
   static String _castMimeType(String path) => CastServer.mimeType(path);
@@ -446,35 +437,21 @@ class AudioVaultHandler extends BaseAudioHandler {
 
   // ── Position persistence ───────────────────────────────────────────────────
 
-  Future<void> _savePosition() async {
-    if (_book == null) return;
-    final idx = _player.currentIndex ?? 0;
-    final pos = _player.position;
-    await locator<PositionService>().savePosition(
-      bookPath: _book!.path,
-      chapterIndex: idx,
-      position: pos,
-      globalPositionMs: calculateGlobalPosition(
-        chapterIndex: idx,
-        chapterPosition: pos,
-        chapterDurations: _book?.chapterDurations ?? [],
-      ),
-      totalDurationMs: _book!.duration?.inMilliseconds ?? 0,
-    );
-  }
+  Future<void> _savePosition() => _persister.save();
 
+  /// Kept as a redirect for existing tests; real implementation is in
+  /// `position_persister.dart`.
   @visibleForTesting
   static int calculateGlobalPosition({
     required int chapterIndex,
     required Duration chapterPosition,
     required List<Duration> chapterDurations,
-  }) {
-    int offset = 0;
-    for (int i = 0; i < chapterIndex && i < chapterDurations.length; i++) {
-      offset += chapterDurations[i].inMilliseconds;
-    }
-    return offset + chapterPosition.inMilliseconds;
-  }
+  }) =>
+      pp.calculateGlobalPosition(
+        chapterIndex: chapterIndex,
+        chapterPosition: chapterPosition,
+        chapterDurations: chapterDurations,
+      );
 
   @visibleForTesting
   static Duration getRewindOffset(Duration pausedDuration) {
