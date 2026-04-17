@@ -55,3 +55,8 @@ node_modules/
 android/key.properties
 *.jks
 *.keystore
+
+# Local secrets — never commit
+.env
+.env.*
+!.env.example

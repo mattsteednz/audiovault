@@ -4,6 +4,14 @@ All notable changes to AudioVault are documented here.
 
 ## [Unreleased]
 
+### Changed
+
+- **Drive sign-in logs** — User email is no longer included in debug logs; sign-in and session-restore events log a generic status string instead.
+
+### Internal
+
+- Extracted pure helpers from `LibraryScreen` (status filter, last-played sort, byte formatting) and `DriveDownloadManager` (queue-selection decision), and expanded test coverage for Drive services and the book repository. 52 new tests, no behaviour change.
+
 ---
 
 ## [1.2.5] — 2026-04-16

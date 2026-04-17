@@ -51,6 +51,46 @@ List<Audiobook> applyCachedCovers(
   }).toList();
 }
 
+/// Filters [books] to those whose status in [statuses] matches [filter].
+/// When [filter] is null, returns [books] unchanged. Books without an entry in
+/// [statuses] are treated as [BookStatus.notStarted].
+List<Audiobook> applyStatusFilter(
+  List<Audiobook> books,
+  Map<String, BookStatus> statuses,
+  BookStatus? filter,
+) {
+  if (filter == null) return books;
+  return books
+      .where((b) => (statuses[b.path] ?? BookStatus.notStarted) == filter)
+      .toList();
+}
+
+/// Sorts [books] by last-played order: books with a position entry come first
+/// (newest `updatedAt` first), then unplayed books alphabetically by title.
+List<Audiobook> sortByLastPlayed(
+  List<Audiobook> books,
+  List<BookProgress> positions,
+) {
+  final played = <String, int>{
+    for (final p in positions) p.bookPath: p.updatedAt
+  };
+  final withHistory = books.where((b) => played.containsKey(b.path)).toList()
+    ..sort((a, b) => (played[b.path] ?? 0).compareTo(played[a.path] ?? 0));
+  final withoutHistory = books.where((b) => !played.containsKey(b.path)).toList()
+    ..sort((a, b) => a.title.toLowerCase().compareTo(b.title.toLowerCase()));
+  return [...withHistory, ...withoutHistory];
+}
+
+/// Human-readable byte size string (B / KB / MB / GB).
+String formatBytes(int bytes) {
+  if (bytes < 1024) return '$bytes B';
+  if (bytes < 1024 * 1024) return '${(bytes / 1024).toStringAsFixed(0)} KB';
+  if (bytes < 1024 * 1024 * 1024) {
+    return '${(bytes / (1024 * 1024)).toStringAsFixed(1)} MB';
+  }
+  return '${(bytes / (1024 * 1024 * 1024)).toStringAsFixed(2)} GB';
+}
+
 class LibraryScreen extends StatefulWidget {
   const LibraryScreen({super.key});
 
@@ -127,14 +167,8 @@ class _LibraryScreenState extends State<LibraryScreen> {
   }
 
   List<Audiobook> get _displayedBooks {
-    var books = filterBooks(_books ?? [], _searchQuery);
-    if (_statusFilter != null) {
-      books = books
-          .where((b) =>
-              (_statuses[b.path] ?? BookStatus.notStarted) == _statusFilter)
-          .toList();
-    }
-    return books;
+    final filtered = filterBooks(_books ?? [], _searchQuery);
+    return applyStatusFilter(filtered, _statuses, _statusFilter);
   }
 
   // ── Scan + sort ─────────────────────────────────────────────────────────────
@@ -261,21 +295,9 @@ class _LibraryScreenState extends State<LibraryScreen> {
 
     final positions = await locator<PositionService>().getAllPositions();
     final statuses = await locator<PositionService>().getAllStatuses();
-    final played = <String, int>{
-      for (final p in positions) p.bookPath: p.updatedAt
-    };
-
-    final withHistory = all.where((b) => played.containsKey(b.path)).toList()
-      ..sort((a, b) => (played[b.path] ?? 0).compareTo(played[a.path] ?? 0));
-
-    final withoutHistory = all
-        .where((b) => !played.containsKey(b.path))
-        .toList()
-      ..sort((a, b) =>
-          a.title.toLowerCase().compareTo(b.title.toLowerCase()));
 
     setState(() {
-      _books = [...withHistory, ...withoutHistory];
+      _books = sortByLastPlayed(all, positions);
       _statuses = statuses;
     });
   }
@@ -428,7 +450,7 @@ class _LibraryScreenState extends State<LibraryScreen> {
                 overflow: TextOverflow.ellipsis),
             const SizedBox(height: 8),
             if (sizeBytes != null)
-              Text('You\'re on mobile data. This book is ${_formatBytes(sizeBytes)}. '
+              Text('You\'re on mobile data. This book is ${formatBytes(sizeBytes)}. '
                   'Download anyway?')
             else
               const Text(
@@ -445,7 +467,7 @@ class _LibraryScreenState extends State<LibraryScreen> {
                 FilledButton.icon(
                   icon: const Icon(Icons.download_rounded),
                   label: Text(sizeBytes != null
-                      ? 'Download (${_formatBytes(sizeBytes)})'
+                      ? 'Download (${formatBytes(sizeBytes)})'
                       : 'Download'),
                   onPressed: () {
                     Navigator.pop(ctx);
@@ -458,13 +480,6 @@ class _LibraryScreenState extends State<LibraryScreen> {
         ),
       ),
     );
-  }
-
-  static String _formatBytes(int bytes) {
-    if (bytes < 1024) return '$bytes B';
-    if (bytes < 1024 * 1024) return '${(bytes / 1024).toStringAsFixed(0)} KB';
-    if (bytes < 1024 * 1024 * 1024) return '${(bytes / (1024 * 1024)).toStringAsFixed(1)} MB';
-    return '${(bytes / (1024 * 1024 * 1024)).toStringAsFixed(2)} GB';
   }
 
   // ── Build ────────────────────────────────────────────────────────────────────

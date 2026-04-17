@@ -98,10 +98,18 @@ class DriveDownloadManager {
   }
 
   void _drain() {
-    if (_activeCount >= _maxConcurrent) return;
-    for (final queue in _queues.values) {
-      if (_activeCount >= _maxConcurrent) break;
-      if (queue.active || queue.pending.isEmpty) continue;
+    final snapshots = _queues.values.map((q) => DownloadQueueSnapshot(
+          folderId: q.folderId,
+          active: q.active,
+          hasPending: q.pending.isNotEmpty,
+        ));
+    final toStart = selectQueuesToStart(
+      queues: snapshots,
+      activeCount: _activeCount,
+      maxConcurrent: _maxConcurrent,
+    );
+    for (final folderId in toStart) {
+      final queue = _queues[folderId]!;
       final job = queue.pending.removeAt(0);
       queue.active = true;
       _activeCount++;
@@ -336,3 +344,38 @@ class _DownloadJob {
 }
 
 class _AuthException implements Exception {}
+
+/// Read-only view of a per-book download queue, used by [selectQueuesToStart].
+class DownloadQueueSnapshot {
+  final String folderId;
+  final bool active;
+  final bool hasPending;
+
+  const DownloadQueueSnapshot({
+    required this.folderId,
+    required this.active,
+    required this.hasPending,
+  });
+}
+
+/// Picks which queues are ready to start their next job, respecting the global
+/// concurrency limit and the rule that a single book never runs two downloads
+/// at once. Pure function — no side effects.
+///
+/// Returns folderIds in iteration order, capped by remaining concurrency
+/// (`maxConcurrent - activeCount`).
+List<String> selectQueuesToStart({
+  required Iterable<DownloadQueueSnapshot> queues,
+  required int activeCount,
+  required int maxConcurrent,
+}) {
+  final remaining = maxConcurrent - activeCount;
+  if (remaining <= 0) return const [];
+  final result = <String>[];
+  for (final q in queues) {
+    if (result.length >= remaining) break;
+    if (q.active || !q.hasPending) continue;
+    result.add(q.folderId);
+  }
+  return result;
+}

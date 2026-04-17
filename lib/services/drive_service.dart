@@ -84,7 +84,7 @@ class DriveService {
   Future<void> restoreSession() async {
     try {
       _account = await _signIn.signInSilently();
-      if (_account != null) debugPrint('[Drive] Session restored: ${_account!.email}');
+      if (_account != null) debugPrint('[Drive] Session restored');
     } catch (_) {
       // No previous session or token expired — user will sign in manually.
     }
@@ -104,7 +104,7 @@ class DriveService {
       if (_account == null) {
         debugPrint('[Drive] signIn() returned null (user cancelled or no account selected)');
       } else {
-        debugPrint('[Drive] signIn() succeeded: ${_account!.email}');
+        debugPrint('[Drive] signIn() succeeded');
       }
       return _account;
     } catch (e, st) {
@@ -243,21 +243,31 @@ class DriveService {
     return scans;
   }
 
-  DriveFileInfo? _pickCover(List<DriveFileInfo> images) {
-    if (images.isEmpty) return null;
-    // Priority: exact 'cover.jpg'/'Cover.jpg', then any name containing 'cover', then first
-    for (final img in images) {
-      final lower = img.name.toLowerCase();
-      if (lower == 'cover.jpg' || lower == 'cover.jpeg' || lower == 'cover.png') return img;
+  DriveFileInfo? _pickCover(List<DriveFileInfo> images) => pickCover(images);
+}
+
+/// Chooses the most likely cover image from a list of image files.
+///
+/// Priority: exact `cover.jpg`/`.jpeg`/`.png`, then any filename containing
+/// `cover`, then the first image. Returns null if [images] is empty.
+DriveFileInfo? pickCover(List<DriveFileInfo> images) {
+  if (images.isEmpty) return null;
+  for (final img in images) {
+    final lower = img.name.toLowerCase();
+    if (lower == 'cover.jpg' || lower == 'cover.jpeg' || lower == 'cover.png') {
+      return img;
     }
-    for (final img in images) {
-      if (img.name.toLowerCase().contains('cover')) return img;
-    }
-    return images.first;
   }
+  for (final img in images) {
+    if (img.name.toLowerCase().contains('cover')) return img;
+  }
+  return images.first;
 }
 
 /// Natural sort comparator — numbers within strings sort numerically.
+@visibleForTesting
+int naturalCompare(String a, String b) => _naturalCompare(a, b);
+
 int _naturalCompare(String a, String b) {
   final aLow = a.toLowerCase();
   final bLow = b.toLowerCase();
