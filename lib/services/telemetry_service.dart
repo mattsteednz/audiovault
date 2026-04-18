@@ -44,6 +44,18 @@ class TelemetryService {
     }
   }
 
+  /// Record a non-fatal error (e.g. a swallowed init failure) so it shows
+  /// up in Crashlytics without crashing the app. No-op when Firebase is
+  /// unavailable or the user hasn't consented.
+  static Future<void> recordNonFatal(Object error, StackTrace stack) async {
+    if (!_available) return;
+    try {
+      await FirebaseCrashlytics.instance.recordError(error, stack, fatal: false);
+    } catch (e) {
+      debugPrint('[AudioVault:Telemetry] recordNonFatal error: $e');
+    }
+  }
+
   /// Wire Crashlytics into Flutter's error handler.
   /// Only called when Firebase is available and the user has opted in.
   static void enableCrashHandler() {

@@ -65,8 +65,11 @@ void main() async {
       );
     }
     GoogleCastContext.instance.setSharedInstanceWithOptions(options);
-  } catch (_) {
+  } catch (e, st) {
     // Cast not available on this platform or emulator — app continues.
+    debugPrint('[AudioVault:Cast] init failed: $e\n$st');
+    // Fire-and-forget; telemetry is no-op if Firebase isn't ready yet.
+    TelemetryService.recordNonFatal(e, st);
   }
 
   // Initialise Firebase — silently ignored if config files are placeholders.
