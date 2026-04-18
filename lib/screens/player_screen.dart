@@ -7,6 +7,7 @@ import 'package:path/path.dart' as p;
 import '../models/audiobook.dart';
 import '../services/audio_handler.dart';
 import '../services/preferences_service.dart';
+import '../services/sleep_timer_controller.dart';
 import '../widgets/audio_handler_scope.dart';
 import '../widgets/book_cover.dart';
 import '../locator.dart';
@@ -42,10 +43,11 @@ class _PlayerScreenState extends State<PlayerScreen> {
   double _speed = 1.0;
   int _skipInterval = 30;
 
-  // Sleep timer
-  Timer? _sleepTimer;
-  Duration _sleepRemaining = Duration.zero;
-  bool _stopAtChapterEnd = false;
+  // Sleep timer — state lives in the shared controller so it's visible
+  // outside this screen (library AppBar, mini-player).
+  final SleepTimerController _sleepCtrl = locator<SleepTimerController>();
+  VoidCallback? _sleepListener;
+  VoidCallback? _eocListener;
 
   // Progress slider drag state
   bool _dragging = false;
@@ -88,13 +90,21 @@ class _PlayerScreenState extends State<PlayerScreen> {
           setState(() => _currentChapterIndex = idx);
         }
         if (idx != _lastChapterIndex) {
-          if (_stopAtChapterEnd) {
+          if (_sleepCtrl.stopAtChapterEnd.value) {
             _audioHandler.pause();
             _cancelTimer();
           }
           setState(() => _lastChapterIndex = idx);
         }
       });
+
+      // Rebuild the AppBar timer label when the controller ticks.
+      _sleepListener = () {
+        if (mounted) setState(() {});
+      };
+      _eocListener = _sleepListener;
+      _sleepCtrl.remaining.addListener(_sleepListener!);
+      _sleepCtrl.stopAtChapterEnd.addListener(_eocListener!);
 
       // Error stream → snackbar with retry. `null` clears any banner.
       _errorSub = _audioHandler.errorStream.listen(_onError);
@@ -134,7 +144,12 @@ class _PlayerScreenState extends State<PlayerScreen> {
     _chapterSub?.cancel();
     _posSub?.cancel();
     _errorSub?.cancel();
-    _sleepTimer?.cancel();
+    if (_sleepListener != null) {
+      _sleepCtrl.remaining.removeListener(_sleepListener!);
+    }
+    if (_eocListener != null) {
+      _sleepCtrl.stopAtChapterEnd.removeListener(_eocListener!);
+    }
     super.dispose();
   }
 
@@ -165,32 +180,18 @@ class _PlayerScreenState extends State<PlayerScreen> {
   // ── Sleep timer ─────────────────────────────────────────────────────────────
 
   void _setTimer(_TimerOpt opt) {
-    _cancelTimer();
     if (opt.endOfChapter) {
-      setState(() => _stopAtChapterEnd = true);
+      _sleepCtrl.setStopAtChapterEnd(true);
       return;
     }
-    if (opt.duration == null) return; // "Off"
-    setState(() => _sleepRemaining = opt.duration!);
-    _sleepTimer = Timer.periodic(const Duration(seconds: 1), (_) {
-      final tick = sleepTimerTick(_sleepRemaining);
-      if (tick.shouldFire) {
-        _audioHandler.pause();
-        _cancelTimer();
-      } else {
-        setState(() => _sleepRemaining = tick.next);
-      }
-    });
+    if (opt.duration == null) {
+      _sleepCtrl.cancel();
+      return;
+    }
+    _sleepCtrl.startTimed(opt.duration!, onFire: _audioHandler.pause);
   }
 
-  void _cancelTimer() {
-    _sleepTimer?.cancel();
-    setState(() {
-      _sleepTimer = null;
-      _sleepRemaining = Duration.zero;
-      _stopAtChapterEnd = false;
-    });
-  }
+  void _cancelTimer() => _sleepCtrl.cancel();
 
   // ── Cast device picker ───────────────────────────────────────────────────────
 
@@ -467,12 +468,13 @@ class _PlayerScreenState extends State<PlayerScreen> {
   // ── Helpers ─────────────────────────────────────────────────────────────────
 
   String get _timerLabel {
-    if (_stopAtChapterEnd) return 'End of ch.';
-    if (_sleepTimer != null) return fmtHM(_sleepRemaining);
+    if (_sleepCtrl.stopAtChapterEnd.value) return 'End of ch.';
+    final remaining = _sleepCtrl.remaining.value;
+    if (remaining != null) return fmtHM(remaining);
     return 'Off';
   }
 
-  bool get _timerActive => _sleepTimer != null || _stopAtChapterEnd;
+  bool get _timerActive => _sleepCtrl.isActive;
 
   Future<void> _showChapterList(BuildContext context) async {
     final book = widget.book;
@@ -1041,12 +1043,3 @@ String fmtHM(Duration d) {
   return h > 0 ? '$h:$m:$s' : '$m:$s';
 }
 
-/// Result of a sleep-timer tick: the new remaining time and whether the
-/// timer should fire (pause playback). Pure function — no side effects.
-({Duration next, bool shouldFire}) sleepTimerTick(Duration current) {
-  final next = current - const Duration(seconds: 1);
-  if (next <= Duration.zero) {
-    return (next: Duration.zero, shouldFire: true);
-  }
-  return (next: next, shouldFire: false);
-}

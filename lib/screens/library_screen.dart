@@ -16,6 +16,7 @@ import '../widgets/audio_handler_scope.dart';
 import '../widgets/audiobook_card.dart';
 import '../widgets/audiobook_list_tile.dart';
 import '../widgets/book_cover.dart';
+import '../widgets/sleep_timer_indicator.dart';
 import 'book_details_screen.dart';
 import 'history_screen.dart';
 import 'player_screen.dart';
@@ -693,6 +694,14 @@ class _LibraryScreenState extends State<LibraryScreen> {
                   ),
               ]
             : [
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 4),
+                  child: Center(
+                    child: SleepTimerIndicator(
+                      onTap: _openCurrentBookPlayer,
+                    ),
+                  ),
+                ),
                 IconButton(
                   icon: const Icon(Icons.search_rounded),
                   onPressed: _books != null && _books!.isNotEmpty
@@ -914,6 +923,16 @@ class _LibraryScreenState extends State<LibraryScreen> {
           ],
         ),
       ),
+    );
+  }
+
+  void _openCurrentBookPlayer() {
+    final ah = AudioHandlerScope.of(context).audioHandler;
+    final book = ah.currentBook;
+    if (book == null) return;
+    Navigator.push(
+      context,
+      MaterialPageRoute(builder: (_) => PlayerScreen(book: book)),
     );
   }
 

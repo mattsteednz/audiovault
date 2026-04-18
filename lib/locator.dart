@@ -8,6 +8,7 @@ import 'services/enrichment_service.dart';
 import 'services/position_service.dart';
 import 'services/preferences_service.dart';
 import 'services/scanner_service.dart';
+import 'services/sleep_timer_controller.dart';
 
 final locator = GetIt.instance;
 
@@ -16,6 +17,8 @@ void setupLocator() {
   locator.registerLazySingleton<PreferencesService>(() => PreferencesService());
   locator.registerLazySingleton<ScannerService>(() => ScannerService());
   locator.registerLazySingleton<EnrichmentService>(() => EnrichmentService());
+  locator.registerLazySingleton<SleepTimerController>(
+      () => SleepTimerController());
   locator.registerLazySingleton<DriveService>(() => DriveService());
   locator.registerLazySingleton<DriveBookRepository>(
       () => DriveBookRepository(locator<PositionService>()));
