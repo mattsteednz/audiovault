@@ -14,6 +14,7 @@ class PreferencesService {
   static const _driveRootIsSharedKey = 'drive_root_is_shared';
   static const _removeWhenFinishedKey = 'drive_remove_when_finished';
   static const _refreshOnStartupKey = 'refresh_on_startup';
+  static const _librarySortKey = 'library_sort';
 
   SharedPreferences? _prefs;
 
@@ -75,6 +76,15 @@ class PreferencesService {
 
   Future<void> setSkipInterval(int seconds) async {
     await (await _sp).setInt(_skipIntervalKey, seconds);
+  }
+
+  /// Library sort order. Stored as the enum name. Default: `lastPlayed`.
+  Future<String?> getLibrarySort() async {
+    return (await _sp).getString(_librarySortKey);
+  }
+
+  Future<void> setLibrarySort(String value) async {
+    await (await _sp).setString(_librarySortKey, value);
   }
 
   Future<({String id, String name, bool isShared})?> getDriveRootFolder() async {

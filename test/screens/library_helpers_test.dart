@@ -189,4 +189,79 @@ void main() {
       expect(formatBytes((1024 * 1024 * 1024 * 2.5).round()), '2.50 GB');
     });
   });
+
+  group('LibrarySortOrder.fromName', () {
+    test('null falls back to lastPlayed', () {
+      expect(LibrarySortOrder.fromName(null), LibrarySortOrder.lastPlayed);
+    });
+    test('unknown falls back to lastPlayed', () {
+      expect(LibrarySortOrder.fromName('nope'), LibrarySortOrder.lastPlayed);
+    });
+    test('round-trips known names', () {
+      for (final v in LibrarySortOrder.values) {
+        expect(LibrarySortOrder.fromName(v.name), v);
+      }
+    });
+  });
+
+  group('sortBooks', () {
+    Audiobook mk(String title, {String? author, Duration? duration}) =>
+        Audiobook(
+          title: title,
+          author: author,
+          duration: duration,
+          path: '/library/$title',
+          audioFiles: const [],
+        );
+
+    test('titleAsc is case-insensitive alphabetical', () {
+      final books = [mk('banana'), mk('Apple'), mk('cherry')];
+      final r = sortBooks(books, LibrarySortOrder.titleAsc);
+      expect(r.map((b) => b.title), ['Apple', 'banana', 'cherry']);
+    });
+
+    test('authorAsc groups by author then title, nulls last', () {
+      final books = [
+        mk('Zed', author: 'Bob'),
+        mk('Alpha', author: 'Bob'),
+        mk('Orphan'), // null author
+        mk('Beta', author: 'Alice'),
+      ];
+      final r = sortBooks(books, LibrarySortOrder.authorAsc);
+      expect(r.map((b) => b.title), ['Beta', 'Alpha', 'Zed', 'Orphan']);
+    });
+
+    test('dateAdded sorts newest first, unknown treated as 0', () {
+      final books = [mk('A'), mk('B'), mk('C')];
+      final r = sortBooks(
+        books,
+        LibrarySortOrder.dateAdded,
+        dateAddedMs: {
+          '/library/A': 100,
+          '/library/B': 300,
+          // C missing → 0, sorts last
+        },
+      );
+      expect(r.map((b) => b.title), ['B', 'A', 'C']);
+    });
+
+    test('durationDesc puts longest first, unknowns last', () {
+      final books = [
+        mk('Short', duration: const Duration(minutes: 30)),
+        mk('Unknown'),
+        mk('Long', duration: const Duration(hours: 10)),
+        mk('Medium', duration: const Duration(hours: 2)),
+      ];
+      final r = sortBooks(books, LibrarySortOrder.durationDesc);
+      expect(r.map((b) => b.title), ['Long', 'Medium', 'Short', 'Unknown']);
+    });
+
+    test('lastPlayed delegates to sortByLastPlayed', () {
+      final books = [_book('A'), _book('B'), _book('C')];
+      final positions = [_progress('/library/B', 200)];
+      final r = sortBooks(books, LibrarySortOrder.lastPlayed,
+          positions: positions);
+      expect(r.map((b) => b.title), ['B', 'A', 'C']);
+    });
+  });
 }

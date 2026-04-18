@@ -1,5 +1,5 @@
 import 'dart:async';
-import 'dart:io' show SocketException;
+import 'dart:io' show File, SocketException;
 import 'package:audio_service/audio_service.dart';
 import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:flutter/material.dart';
@@ -80,6 +80,78 @@ List<Audiobook> sortByLastPlayed(
   final withoutHistory = books.where((b) => !played.containsKey(b.path)).toList()
     ..sort((a, b) => a.title.toLowerCase().compareTo(b.title.toLowerCase()));
   return [...withHistory, ...withoutHistory];
+}
+
+/// User-selectable library sort orders.
+enum LibrarySortOrder {
+  lastPlayed('Last played'),
+  titleAsc('Title (A–Z)'),
+  authorAsc('Author (A–Z)'),
+  dateAdded('Date added'),
+  durationDesc('Duration (longest first)');
+
+  const LibrarySortOrder(this.label);
+  final String label;
+
+  static LibrarySortOrder fromName(String? name) {
+    if (name == null) return LibrarySortOrder.lastPlayed;
+    for (final v in LibrarySortOrder.values) {
+      if (v.name == name) return v;
+    }
+    return LibrarySortOrder.lastPlayed;
+  }
+}
+
+/// Sorts [books] according to [order].
+///
+/// * `lastPlayed` — see [sortByLastPlayed].
+/// * `titleAsc` / `authorAsc` — case-insensitive alphabetical. Books with a
+///   missing author sort after any present author.
+/// * `dateAdded` — newest first by path mtime when available, falling back
+///   to scan order (stable).
+/// * `durationDesc` — longest first; books with unknown duration sort last.
+List<Audiobook> sortBooks(
+  List<Audiobook> books,
+  LibrarySortOrder order, {
+  List<BookProgress> positions = const [],
+  Map<String, int> dateAddedMs = const {},
+}) {
+  final list = [...books];
+  int cmpStr(String a, String b) => a.toLowerCase().compareTo(b.toLowerCase());
+
+  switch (order) {
+    case LibrarySortOrder.lastPlayed:
+      return sortByLastPlayed(list, positions);
+    case LibrarySortOrder.titleAsc:
+      list.sort((a, b) => cmpStr(a.title, b.title));
+      return list;
+    case LibrarySortOrder.authorAsc:
+      list.sort((a, b) {
+        final aa = a.author, ba = b.author;
+        if (aa == null && ba == null) return cmpStr(a.title, b.title);
+        if (aa == null) return 1;
+        if (ba == null) return -1;
+        final c = cmpStr(aa, ba);
+        return c != 0 ? c : cmpStr(a.title, b.title);
+      });
+      return list;
+    case LibrarySortOrder.dateAdded:
+      list.sort((a, b) {
+        final am = dateAddedMs[a.path] ?? 0;
+        final bm = dateAddedMs[b.path] ?? 0;
+        if (am != bm) return bm.compareTo(am); // newest first
+        return cmpStr(a.title, b.title);
+      });
+      return list;
+    case LibrarySortOrder.durationDesc:
+      list.sort((a, b) {
+        final ad = a.duration?.inMilliseconds ?? -1;
+        final bd = b.duration?.inMilliseconds ?? -1;
+        if (ad != bd) return bd.compareTo(ad); // longest first, unknowns last
+        return cmpStr(a.title, b.title);
+      });
+      return list;
+  }
 }
 
 /// Content to show when the library grid is empty, based on what the user
@@ -182,6 +254,9 @@ class _LibraryScreenState extends State<LibraryScreen> {
   // Status filter pill selection (null = show all).
   BookStatus? _statusFilter;
 
+  // User-selected sort order. Defaults to last-played until prefs load.
+  LibrarySortOrder _sortOrder = LibrarySortOrder.lastPlayed;
+
   // Currently-active book tracking (for badge).
   String? _activePath;
   bool _isPlaying = false;
@@ -240,8 +315,12 @@ class _LibraryScreenState extends State<LibraryScreen> {
   // ── Scan + sort ─────────────────────────────────────────────────────────────
 
   Future<void> _initLibrary() async {
-    final shouldScan =
-        await locator<PreferencesService>().getRefreshOnStartup();
+    final prefs = locator<PreferencesService>();
+    final sortName = await prefs.getLibrarySort();
+    if (mounted) {
+      setState(() => _sortOrder = LibrarySortOrder.fromName(sortName));
+    }
+    final shouldScan = await prefs.getRefreshOnStartup();
     if (shouldScan) _scan();
   }
 
@@ -354,6 +433,14 @@ class _LibraryScreenState extends State<LibraryScreen> {
     }
   }
 
+  /// Persist the new sort order and re-sort the library.
+  Future<void> _setSortOrder(LibrarySortOrder order) async {
+    if (order == _sortOrder) return;
+    setState(() => _sortOrder = order);
+    await locator<PreferencesService>().setLibrarySort(order.name);
+    await _applySort();
+  }
+
   /// Loads positions from DB, sorts books, and updates state.
   Future<void> _applySort() async {
     final raw = _rawBooks;
@@ -364,8 +451,27 @@ class _LibraryScreenState extends State<LibraryScreen> {
     final positions = await locator<PositionService>().getAllPositions();
     final statuses = await locator<PositionService>().getAllStatuses();
 
+    // dateAdded: use the folder's mtime for local books. Cheap enough for
+    // typical library sizes (hundreds of books); skip on error.
+    final dateAdded = <String, int>{};
+    if (_sortOrder == LibrarySortOrder.dateAdded) {
+      for (final b in all) {
+        try {
+          final st = await File(b.path).stat();
+          dateAdded[b.path] = st.modified.millisecondsSinceEpoch;
+        } catch (_) {
+          // Drive-only books or stat errors fall through to 0.
+        }
+      }
+    }
+
     setState(() {
-      _books = sortByLastPlayed(all, positions);
+      _books = sortBooks(
+        all,
+        _sortOrder,
+        positions: positions,
+        dateAddedMs: dateAdded,
+      );
       _statuses = statuses;
     });
   }
@@ -607,6 +713,19 @@ class _LibraryScreenState extends State<LibraryScreen> {
                     }
                   },
                   tooltip: 'History',
+                ),
+                PopupMenuButton<LibrarySortOrder>(
+                  tooltip: 'Sort by',
+                  icon: const Icon(Icons.sort_rounded),
+                  onSelected: _setSortOrder,
+                  itemBuilder: (_) => [
+                    for (final order in LibrarySortOrder.values)
+                      CheckedPopupMenuItem(
+                        value: order,
+                        checked: order == _sortOrder,
+                        child: Text(order.label),
+                      ),
+                  ],
                 ),
                 IconButton(
                   icon: Icon(_viewMode == _ViewMode.grid
