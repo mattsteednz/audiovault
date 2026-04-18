@@ -106,5 +106,47 @@ void main() {
         expect(pos, 1260000);
       });
     });
+
+    group('humanizePlayerError', () {
+      test('source-not-found maps to missing-file copy', () {
+        expect(
+          AudioVaultHandler.humanizePlayerError(
+              Exception('Source could not be opened')),
+          contains("couldn't be opened"),
+        );
+      });
+
+      test('permission errors map to permission copy', () {
+        expect(
+          AudioVaultHandler.humanizePlayerError(
+              Exception('Permission denied')),
+          contains('Permission'),
+        );
+      });
+
+      test('codec/format errors map to unsupported-format copy', () {
+        expect(
+          AudioVaultHandler.humanizePlayerError(
+              Exception('Unsupported codec')),
+          contains('unsupported audio format'),
+        );
+      });
+
+      test('network errors map to network copy', () {
+        expect(
+          AudioVaultHandler.humanizePlayerError(
+              Exception('Socket connection refused')),
+          contains('Network'),
+        );
+      });
+
+      test('unknown errors fall back to generic retry copy', () {
+        expect(
+          AudioVaultHandler.humanizePlayerError(
+              Exception('something weird happened')),
+          contains('Tap retry'),
+        );
+      });
+    });
   });
 }

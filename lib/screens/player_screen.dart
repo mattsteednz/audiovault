@@ -63,6 +63,11 @@ class _PlayerScreenState extends State<PlayerScreen> {
   late final AudioVaultHandler _audioHandler;
   bool _didInit = false;
 
+  // Error-state tracking — mirrors handler.errorStream so we can disable
+  // controls + show a retry snackbar without StreamBuilder-wrapping everything.
+  StreamSubscription<String?>? _errorSub;
+  String? _currentError;
+
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
@@ -90,6 +95,9 @@ class _PlayerScreenState extends State<PlayerScreen> {
           setState(() => _lastChapterIndex = idx);
         }
       });
+
+      // Error stream → snackbar with retry. `null` clears any banner.
+      _errorSub = _audioHandler.errorStream.listen(_onError);
 
       // M4B: derive chapter from position stream, but only setState when
       // the chapter index actually changes (avoids rebuilds every 200 ms).
@@ -125,8 +133,33 @@ class _PlayerScreenState extends State<PlayerScreen> {
   void dispose() {
     _chapterSub?.cancel();
     _posSub?.cancel();
+    _errorSub?.cancel();
     _sleepTimer?.cancel();
     super.dispose();
+  }
+
+  // ── Error handling ─────────────────────────────────────────────────────────
+
+  void _onError(String? message) {
+    if (!mounted) return;
+    setState(() => _currentError = message);
+    final messenger = ScaffoldMessenger.maybeOf(context);
+    if (message == null) {
+      messenger?.hideCurrentSnackBar();
+      return;
+    }
+    messenger
+      ?..hideCurrentSnackBar()
+      ..showSnackBar(
+        SnackBar(
+          content: Text(message),
+          duration: const Duration(seconds: 10),
+          action: SnackBarAction(
+            label: 'Retry',
+            onPressed: () => _audioHandler.retry(),
+          ),
+        ),
+      );
   }
 
   // ── Sleep timer ─────────────────────────────────────────────────────────────
@@ -838,22 +871,33 @@ class _PlayerScreenState extends State<PlayerScreen> {
       builder: (_, snap) {
         final state = snap.data;
         final playing = state?.playing ?? false;
-        final busy = state?.processingState == AudioProcessingState.loading ||
-            state?.processingState == AudioProcessingState.buffering;
+        final errored = _currentError != null ||
+            state?.processingState == AudioProcessingState.error;
+        final busy = !errored &&
+            (state?.processingState == AudioProcessingState.loading ||
+                state?.processingState == AudioProcessingState.buffering);
+
+        final primaryColor = errored
+            ? theme.colorScheme.primary.withValues(alpha: 0.4)
+            : theme.colorScheme.primary;
 
         return Row(
           mainAxisAlignment: MainAxisAlignment.spaceEvenly,
           children: [
-            _iconBtn(Icons.skip_previous_rounded, 34, _audioHandler.skipToPrevious),
-            _iconBtn(_rewindIcon, 34, _audioHandler.rewind),
-            // Central play/pause button
+            _iconBtn(Icons.skip_previous_rounded, 34,
+                errored ? null : _audioHandler.skipToPrevious),
+            _iconBtn(_rewindIcon, 34,
+                errored ? null : _audioHandler.rewind),
+            // Central play/pause button (becomes a retry icon on error)
             GestureDetector(
-              onTap: playing ? _audioHandler.pause : _audioHandler.play,
+              onTap: errored
+                  ? _audioHandler.retry
+                  : (playing ? _audioHandler.pause : _audioHandler.play),
               child: Container(
                 width: 68,
                 height: 68,
                 decoration: BoxDecoration(
-                  color: theme.colorScheme.primary,
+                  color: primaryColor,
                   shape: BoxShape.circle,
                 ),
                 child: Center(
@@ -864,7 +908,11 @@ class _PlayerScreenState extends State<PlayerScreen> {
                               strokeWidth: 2.5,
                               color: theme.colorScheme.onPrimary))
                       : Icon(
-                          playing ? Icons.pause_rounded : Icons.play_arrow_rounded,
+                          errored
+                              ? Icons.refresh_rounded
+                              : (playing
+                                  ? Icons.pause_rounded
+                                  : Icons.play_arrow_rounded),
                           size: 38,
                           color: theme.colorScheme.onPrimary,
                         ),
@@ -872,23 +920,26 @@ class _PlayerScreenState extends State<PlayerScreen> {
               ),
             ),
             _forwardIcon != null
-                ? _iconBtn(_forwardIcon!, 34, _audioHandler.fastForward)
+                ? _iconBtn(_forwardIcon!, 34,
+                    errored ? null : _audioHandler.fastForward)
                 : IconButton(
                     iconSize: 34,
                     icon: Transform.scale(
                       scaleX: -1,
                       child: const Icon(Icons.replay_rounded),
                     ),
-                    onPressed: _audioHandler.fastForward,
+                    onPressed: errored ? null : _audioHandler.fastForward,
                   ),
-            _iconBtn(Icons.skip_next_rounded, 34, _audioHandler.skipToNext),
+            _iconBtn(Icons.skip_next_rounded, 34,
+                errored ? null : _audioHandler.skipToNext),
           ],
         );
       },
     );
   }
 
-  Widget _iconBtn(IconData icon, double size, VoidCallback onTap) => IconButton(
+  Widget _iconBtn(IconData icon, double size, VoidCallback? onTap) =>
+      IconButton(
         iconSize: size,
         icon: Icon(icon),
         onPressed: onTap,

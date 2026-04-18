@@ -43,6 +43,16 @@ class AudioVaultHandler extends BaseAudioHandler {
   Stream<Duration?> get effectiveDurationStream =>
       _effectiveDurationController.stream;
 
+  /// User-facing playback error message. `null` while healthy.
+  ///
+  /// Fires whenever `just_audio` reports an unrecoverable playback error
+  /// (missing file, codec issue, …) or [loadBook] throws. The PlayerScreen
+  /// listens to this to disable controls and surface a retry snackbar.
+  final _errorController = StreamController<String?>.broadcast();
+  Stream<String?> get errorStream => _errorController.stream;
+  String? _lastError;
+  String? get lastError => _lastError;
+
   AudioVaultHandler() {
     _persister = pp.PositionPersister(
       positionService: locator<PositionService>(),
@@ -83,6 +93,7 @@ class AudioVaultHandler extends BaseAudioHandler {
       _broadcastState,
       onError: (Object e) {
         debugPrint('[AudioVault:Error] playback error: $e');
+        _reportError(_humanizePlayerError(e));
       },
     );
 
@@ -193,8 +204,11 @@ class AudioVaultHandler extends BaseAudioHandler {
     } catch (e) {
       _book = null;
       _artUri = null;
+      _reportError(_humanizePlayerError(e));
       rethrow;
     }
+    // Load succeeded — clear any stale error.
+    _clearError();
     _publishMediaItem();
 
     // If already casting, re-cast the new book.
@@ -393,16 +407,69 @@ class AudioVaultHandler extends BaseAudioHandler {
 
   void _broadcastState(PlaybackEvent? event) {
     if (isCasting) return; // Cast status drives the broadcast when casting.
+    // If we have an unresolved error, surface it in the processing state so
+    // the UI can disable controls until the user retries.
+    final state = _lastError != null
+        ? AudioProcessingState.error
+        : msb.mapLocalProcessingState(_player.processingState.name);
     _broadcaster.broadcastLocal(
       playing: _player.playing,
-      processingState: msb.mapLocalProcessingState(
-          _player.processingState.name),
+      processingState: state,
       position: _player.position,
       bufferedPosition: _player.bufferedPosition,
       speed: _player.speed,
       queueIndex: _player.currentIndex,
     );
     if (_player.duration != null) _publishMediaItem();
+  }
+
+  // ── Error reporting ────────────────────────────────────────────────────────
+
+  void _reportError(String message) {
+    _lastError = message;
+    _errorController.add(message);
+    _broadcastState(null);
+  }
+
+  void _clearError() {
+    if (_lastError == null) return;
+    _lastError = null;
+    _errorController.add(null);
+  }
+
+  /// Reload the current book from disk. Used by the Retry action in the UI.
+  /// No-op if no book is loaded.
+  Future<void> retry() async {
+    final book = _book;
+    if (book == null) return;
+    _clearError();
+    // Force reload even if path matches the stale in-memory book.
+    _book = null;
+    await loadBook(book);
+  }
+
+  /// Map a raw player error / exception to a concise, user-facing line.
+  /// Keeps the original `toString()` for telemetry but trims it for display.
+  @visibleForTesting
+  static String humanizePlayerError(Object e) => _humanizePlayerError(e);
+
+  static String _humanizePlayerError(Object e) {
+    final raw = e.toString();
+    final low = raw.toLowerCase();
+    if (low.contains('source') && low.contains('not')) {
+      return "Audio file couldn't be opened. It may have moved or been deleted.";
+    }
+    if (low.contains('permission')) {
+      return 'Permission denied reading the audio file.';
+    }
+    if (low.contains('format') || low.contains('codec')) {
+      return 'This file uses an unsupported audio format.';
+    }
+    if (low.contains('network') || low.contains('socket') ||
+        low.contains('host')) {
+      return 'Network problem while loading audio.';
+    }
+    return 'Playback error. Tap retry to try again.';
   }
 
   void _publishMediaItem() {
