@@ -8,6 +8,7 @@ import 'package:path_provider/path_provider.dart';
 import '../models/audiobook.dart';
 import 'cast_controller.dart';
 import 'drive_library_service.dart';
+import 'drive_removal_scheduler.dart';
 import 'position_persister.dart' as pp;
 import 'position_service.dart';
 import 'preferences_service.dart';
@@ -18,8 +19,8 @@ class AudioVaultHandler extends BaseAudioHandler {
   Audiobook? _book;
   Uri? _artUri;
   late final pp.PositionPersister _persister;
+  late final DriveRemovalScheduler _driveRemoval;
   DateTime? _lastPausedAt;
-  Timer? _removalTimer; // 1-min delay before deleting Drive files on finish
 
   AudioPlayer get player => _player;
   Audiobook? get currentBook => _book;
@@ -50,6 +51,13 @@ class AudioVaultHandler extends BaseAudioHandler {
         chapterIndex: _player.currentIndex ?? 0,
         position: isCasting ? _cast.position : _player.position,
       ),
+    );
+
+    _driveRemoval = DriveRemovalScheduler(
+      getBookStatus: (p) => locator<PositionService>().getBookStatus(p),
+      deleteFiles: (f) => locator<DriveLibraryService>().deleteLocalFiles(f),
+      isRemoveWhenFinishedEnabled: () =>
+          locator<PreferencesService>().getRemoveWhenFinished(),
     );
 
     _cast = CastController(
@@ -154,27 +162,9 @@ class AudioVaultHandler extends BaseAudioHandler {
   Future<void> _onPlaybackCompleted() async {
     final book = _book;
     if (book == null) return;
-    await locator<PositionService>().updateBookStatus(book.path, BookStatus.finished);
-
-    if (book.source != AudiobookSource.drive) return;
-    final folderId = book.driveMetadata?.folderId;
-    if (folderId == null) return;
-
-    final removeWhenFinished =
-        await locator<PreferencesService>().getRemoveWhenFinished();
-    if (!removeWhenFinished) return;
-
-    // Queue removal after 1 minute — cancelled if the user presses play.
-    _removalTimer?.cancel();
-    _removalTimer = Timer(const Duration(minutes: 1), () async {
-      // Only delete if the book is still finished (user hasn't restarted).
-      final status =
-          await locator<PositionService>().getBookStatus(book.path);
-      if (status == BookStatus.finished) {
-        await locator<DriveLibraryService>().deleteLocalFiles(folderId);
-      }
-      _removalTimer = null;
-    });
+    await locator<PositionService>()
+        .updateBookStatus(book.path, BookStatus.finished);
+    await _driveRemoval.scheduleForBook(book);
   }
 
   // ── Loading ────────────────────────────────────────────────────────────────
@@ -254,8 +244,7 @@ class AudioVaultHandler extends BaseAudioHandler {
   @override
   Future<void> play() async {
     // Cancel any pending removal — user is resuming/restarting.
-    _removalTimer?.cancel();
-    _removalTimer = null;
+    _driveRemoval.cancel();
 
     // If the book was finished and the user explicitly plays again, reset to inProgress.
     if (_book != null) {
