@@ -201,8 +201,7 @@ class _AppEntryPointState extends State<_AppEntryPoint> {
   Widget build(BuildContext context) {
     // Loading.
     if (_consentDecided == null) {
-      return const Scaffold(
-          body: Center(child: CircularProgressIndicator()));
+      return const _StartupLoading(label: 'Checking settings…');
     }
 
     // First launch — show consent prompt.
@@ -212,10 +211,40 @@ class _AppEntryPointState extends State<_AppEntryPoint> {
 
     // Normal app flow.
     if (_hasLibrary == null) {
-      return const Scaffold(
-          body: Center(child: CircularProgressIndicator()));
+      return const _StartupLoading(label: 'Loading library…');
     }
 
     return _hasLibrary! ? const LibraryScreen() : const OnboardingScreen();
+  }
+}
+
+/// Shared startup loading screen. Identical layout across phases so the
+/// only thing that changes between "Checking settings…" and "Loading
+/// library…" is the label — no spinner jump.
+class _StartupLoading extends StatelessWidget {
+  const _StartupLoading({required this.label});
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      body: Center(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const SizedBox(
+              width: 48,
+              height: 48,
+              child: CircularProgressIndicator(),
+            ),
+            const SizedBox(height: 24),
+            Text(
+              label,
+              style: Theme.of(context).textTheme.bodyLarge,
+            ),
+          ],
+        ),
+      ),
+    );
   }
 }
