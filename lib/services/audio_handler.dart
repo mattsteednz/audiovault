@@ -9,6 +9,7 @@ import '../models/audiobook.dart';
 import 'cast_controller.dart';
 import 'drive_library_service.dart';
 import 'drive_removal_scheduler.dart';
+import 'media_state_broadcaster.dart' as msb;
 import 'position_persister.dart' as pp;
 import 'position_service.dart';
 import 'preferences_service.dart';
@@ -20,6 +21,7 @@ class AudioVaultHandler extends BaseAudioHandler {
   Uri? _artUri;
   late final pp.PositionPersister _persister;
   late final DriveRemovalScheduler _driveRemoval;
+  late final msb.MediaStateBroadcaster _broadcaster;
   DateTime? _lastPausedAt;
 
   AudioPlayer get player => _player;
@@ -30,8 +32,6 @@ class AudioVaultHandler extends BaseAudioHandler {
   late final CastController _cast;
   bool get isCasting => _cast.isCasting;
   Stream<bool> get castingStream => _cast.castingStream;
-
-  int _skipInterval = 30;
 
   /// Effective position stream — emits local or Cast position depending on mode.
   final _effectivePositionController = StreamController<Duration>.broadcast();
@@ -60,6 +60,12 @@ class AudioVaultHandler extends BaseAudioHandler {
           locator<PreferencesService>().getRemoveWhenFinished(),
     );
 
+    _broadcaster = msb.MediaStateBroadcaster(
+      getPlaybackState: () => playbackState.value,
+      setPlaybackState: playbackState.add,
+      setMediaItem: mediaItem.add,
+    );
+
     _cast = CastController(
       localPlayer: _player,
       persister: _persister,
@@ -70,7 +76,7 @@ class AudioVaultHandler extends BaseAudioHandler {
     );
 
     locator<PreferencesService>().getSkipInterval().then((s) {
-      _skipInterval = s;
+      _broadcaster.skipInterval = s;
     });
 
     _player.playbackEventStream.listen(
@@ -133,28 +139,15 @@ class AudioVaultHandler extends BaseAudioHandler {
   /// Translates it into the platform notification state + media item.
   void _onCastStatusChanged(GoggleCastMediaStatus status) {
     final mapped = mapCastPlayerState(status.playerState);
-    final castPosition = _cast.position;
-
-    playbackState.add(playbackState.value.copyWith(
-      controls: [
-        _rewindControl,
-        MediaControl.skipToPrevious,
-        mapped.playing ? MediaControl.pause : MediaControl.play,
-        MediaControl.skipToNext,
-        _forwardControl,
-      ],
-      systemActions: const {MediaAction.seek},
-      androidCompactActionIndices: const [1, 2, 3],
-      processingState: mapped.processingState,
+    _broadcaster.broadcastCast(
       playing: mapped.playing,
-      updatePosition: castPosition,
+      processingState: mapped.processingState,
+      position: _cast.position,
       speed: status.playbackRate.toDouble(),
-    ));
-
+    );
     final dur = status.mediaInformation?.duration;
     if (dur != null) _effectiveDurationController.add(dur);
-
-    if (_book != null) _updateMediaItem();
+    _publishMediaItem();
   }
 
   // ── Completion handling ────────────────────────────────────────────────────
@@ -202,7 +195,7 @@ class AudioVaultHandler extends BaseAudioHandler {
       _artUri = null;
       rethrow;
     }
-    _updateMediaItem();
+    _publishMediaItem();
 
     // If already casting, re-cast the new book.
     if (isCasting) {
@@ -297,64 +290,43 @@ class AudioVaultHandler extends BaseAudioHandler {
 
   @override
   Future<void> skipToNext() async {
-    if (isCasting) {
-      final chapters = _book?.chapters;
-      if (chapters != null && chapters.isNotEmpty) {
-        final idx = _book!.chapterIndexAt(_cast.position);
-        if (idx < chapters.length - 1) {
-          await seek(chapters[idx + 1].start);
-        }
-      } else {
-        await _cast.queueNext();
-      }
+    final book = _book;
+    final chapters = book?.chapters ?? const [];
+    final pos = isCasting ? _cast.position : _player.position;
+    final target = msb.nextChapterStart(
+      currentPosition: pos,
+      chapters: chapters,
+      chapterIndexAt: book?.chapterIndexAt ?? (_) => 0,
+    );
+
+    if (target != null) {
+      await seek(target);
       return;
     }
-
-    final chapters = _book?.chapters;
-    if (chapters != null && chapters.isNotEmpty) {
-      final idx = _book!.chapterIndexAt(_player.position);
-      if (idx < chapters.length - 1) {
-        await _player.seek(chapters[idx + 1].start);
-      }
+    if (isCasting) {
+      await _cast.queueNext();
       return;
     }
     final idx = _player.currentIndex ?? 0;
-    final len = _player.sequence.length;
-    if (idx < len - 1) await _player.seekToNext();
+    if (idx < _player.sequence.length - 1) await _player.seekToNext();
   }
 
   @override
   Future<void> skipToPrevious() async {
-    if (isCasting) {
-      final chapters = _book?.chapters;
-      if (chapters != null && chapters.isNotEmpty) {
-        final pos = _cast.position;
-        final idx = _book!.chapterIndexAt(pos);
-        final chapterStart = chapters[idx].start;
-        if (pos - chapterStart > const Duration(seconds: 5)) {
-          await seek(chapterStart);
-        } else if (idx > 0) {
-          await seek(chapters[idx - 1].start);
-        } else {
-          await seek(Duration.zero);
-        }
-      } else {
-        await _cast.queuePrev();
-      }
+    final book = _book;
+    final chapters = book?.chapters ?? const [];
+    final pos = isCasting ? _cast.position : _player.position;
+
+    if (chapters.isNotEmpty) {
+      await seek(msb.previousChapterTarget(
+        currentPosition: pos,
+        chapters: chapters,
+        chapterIndexAt: book!.chapterIndexAt,
+      ));
       return;
     }
-
-    final chapters = _book?.chapters;
-    if (chapters != null && chapters.isNotEmpty) {
-      final idx = _book!.chapterIndexAt(_player.position);
-      final chapterStart = chapters[idx].start;
-      if (_player.position - chapterStart > const Duration(seconds: 5)) {
-        await _player.seek(chapterStart);
-      } else if (idx > 0) {
-        await _player.seek(chapters[idx - 1].start);
-      } else {
-        await _player.seek(Duration.zero);
-      }
+    if (isCasting) {
+      await _cast.queuePrev();
       return;
     }
     if (_player.position > const Duration(seconds: 5)) {
@@ -377,9 +349,8 @@ class AudioVaultHandler extends BaseAudioHandler {
       await _cast.seekRelative(interval);
       return;
     }
-    final dur = _player.duration ?? Duration.zero;
-    final pos = _player.position + interval;
-    await _player.seek(pos > dur ? dur : pos);
+    await _player.seek(
+        msb.clampedForward(_player.position, _player.duration, interval));
   }
 
   @override
@@ -390,8 +361,7 @@ class AudioVaultHandler extends BaseAudioHandler {
       await _cast.seekRelative(Duration(seconds: -secs));
       return;
     }
-    final pos = _player.position - interval;
-    await _player.seek(pos < Duration.zero ? Duration.zero : pos);
+    await _player.seek(msb.clampedRewind(_player.position, interval));
   }
 
   @override
@@ -417,68 +387,32 @@ class AudioVaultHandler extends BaseAudioHandler {
   // ── State broadcasting ─────────────────────────────────────────────────────
 
   void updateSkipInterval(int seconds) {
-    _skipInterval = seconds;
+    _broadcaster.skipInterval = seconds;
     _broadcastState(null);
   }
 
-  MediaControl get _rewindControl => MediaControl(
-    androidIcon: 'drawable/ic_replay',
-    label: '-$_skipInterval s',
-    action: MediaAction.rewind,
-  );
-
-  MediaControl get _forwardControl => MediaControl(
-    androidIcon: 'drawable/ic_forward',
-    label: '+$_skipInterval s',
-    action: MediaAction.fastForward,
-  );
-
   void _broadcastState(PlaybackEvent? event) {
     if (isCasting) return; // Cast status drives the broadcast when casting.
-
-    final playing = _player.playing;
-    playbackState.add(playbackState.value.copyWith(
-      controls: [
-        _rewindControl,
-        MediaControl.skipToPrevious,
-        playing ? MediaControl.pause : MediaControl.play,
-        MediaControl.skipToNext,
-        _forwardControl,
-      ],
-      systemActions: const {MediaAction.seek},
-      androidCompactActionIndices: const [1, 2, 3],
-      processingState: {
-        ProcessingState.idle:      AudioProcessingState.idle,
-        ProcessingState.loading:   AudioProcessingState.loading,
-        ProcessingState.buffering: AudioProcessingState.buffering,
-        ProcessingState.ready:     AudioProcessingState.ready,
-        ProcessingState.completed: AudioProcessingState.completed,
-      }[_player.processingState]!,
-      playing: playing,
-      updatePosition: _player.position,
+    _broadcaster.broadcastLocal(
+      playing: _player.playing,
+      processingState: msb.mapLocalProcessingState(
+          _player.processingState.name),
+      position: _player.position,
       bufferedPosition: _player.bufferedPosition,
       speed: _player.speed,
       queueIndex: _player.currentIndex,
-    ));
-
-    if (_player.duration != null) _updateMediaItem();
+    );
+    if (_player.duration != null) _publishMediaItem();
   }
 
-  void _updateMediaItem() {
-    if (_book == null) return;
-    final idx = _player.currentIndex ?? 0;
-    mediaItem.add(MediaItem(
-      id: _book!.path,
-      title: _book!.title,
-      artist: _book!.author ?? '',
+  void _publishMediaItem() {
+    final book = _book;
+    if (book == null) return;
+    _broadcaster.updateMediaItem(
+      book: book,
+      chapterIndex: _player.currentIndex ?? 0,
       duration: _player.duration,
       artUri: _artUri,
-      extras: {
-        'chapterIndex': idx,
-        'chapterCount': _book!.chapters.isNotEmpty
-            ? _book!.chapters.length
-            : _book!.audioFiles.length,
-      },
-    ));
+    );
   }
 }
