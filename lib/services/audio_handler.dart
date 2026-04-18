@@ -6,12 +6,11 @@ import 'package:flutter_chrome_cast/flutter_chrome_cast.dart';
 import 'package:just_audio/just_audio.dart';
 import 'package:path_provider/path_provider.dart';
 import '../models/audiobook.dart';
-import 'cast_server.dart';
+import 'cast_controller.dart';
 import 'drive_library_service.dart';
 import 'position_persister.dart' as pp;
 import 'position_service.dart';
 import 'preferences_service.dart';
-import 'telemetry_service.dart';
 import '../locator.dart';
 
 class AudioVaultHandler extends BaseAudioHandler {
@@ -27,20 +26,11 @@ class AudioVaultHandler extends BaseAudioHandler {
 
   // ── Cast state ──────────────────────────────────────────────────────────────
 
-  bool _casting = false;
-  bool get isCasting => _casting;
+  late final CastController _cast;
+  bool get isCasting => _cast.isCasting;
+  Stream<bool> get castingStream => _cast.castingStream;
 
   int _skipInterval = 30;
-
-  final _castingController = StreamController<bool>.broadcast();
-  Stream<bool> get castingStream => _castingController.stream;
-
-  final CastServer _castServer = CastServer();
-  String? _castBaseUrl;
-
-  StreamSubscription? _castSessionSub;
-  StreamSubscription? _castStatusSub;
-  StreamSubscription? _castPositionSub;
 
   /// Effective position stream — emits local or Cast position depending on mode.
   final _effectivePositionController = StreamController<Duration>.broadcast();
@@ -58,10 +48,17 @@ class AudioVaultHandler extends BaseAudioHandler {
       getBook: () => _book,
       readPosition: () => (
         chapterIndex: _player.currentIndex ?? 0,
-        position: _casting
-            ? GoogleCastRemoteMediaClient.instance.playerPosition
-            : _player.position,
+        position: isCasting ? _cast.position : _player.position,
       ),
+    );
+
+    _cast = CastController(
+      localPlayer: _player,
+      persister: _persister,
+      getBook: () => _book,
+      onEffectivePosition: (p) => _effectivePositionController.add(p),
+      onEffectiveDuration: (d) => _effectiveDurationController.add(d),
+      onStatusChanged: _onCastStatusChanged,
     );
 
     locator<PreferencesService>().getSkipInterval().then((s) {
@@ -93,15 +90,15 @@ class AudioVaultHandler extends BaseAudioHandler {
 
     // Forward local streams to effective streams when not casting.
     _player.positionStream.listen((pos) {
-      if (!_casting) _effectivePositionController.add(pos);
+      if (!isCasting) _effectivePositionController.add(pos);
     });
     _player.durationStream.listen((dur) {
-      if (!_casting) _effectiveDurationController.add(dur);
+      if (!isCasting) _effectiveDurationController.add(dur);
     });
 
     // Start/stop periodic save as playback state changes.
     _player.playingStream.listen((playing) {
-      if (_casting) return; // Cast save is handled separately.
+      if (isCasting) return; // Cast save is handled separately.
       if (playing) {
         _persister.startPeriodic();
       } else {
@@ -119,245 +116,38 @@ class AudioVaultHandler extends BaseAudioHandler {
     });
 
     // Listen for Cast session changes.
-    _initCastListener();
+    _cast.listenForSessions();
   }
 
-  // ── Cast session listener ─────────────────────────────────────────────────
+  // ── Cast status → notification state ─────────────────────────────────────
 
-  void _initCastListener() {
-    _castSessionSub = GoogleCastSessionManager
-        .instance.currentSessionStream
-        .listen((_) {
-      final connected =
-          GoogleCastSessionManager.instance.connectionState ==
-          GoogleCastConnectState.connected;
-      if (connected && !_casting) {
-        _startCasting();
-      } else if (!connected && _casting) {
-        _stopCasting();
-      }
-    });
-  }
-
-  Future<void> _startCasting() async {
-    if (_book == null) return;
-
-    _casting = true;
-    _castingController.add(true);
-
-    final wasPlaying = _player.playing;
-    final position = _player.position;
-    final currentIndex = _player.currentIndex ?? 0;
-    final speed = _player.speed;
-
-    // Pause local player — Cast device takes over.
-    await _player.pause();
-
-    // Start HTTP server.
-    try {
-      _castBaseUrl = await _castServer.start(
-        _book!.audioFiles,
-        coverPath: _book!.coverImagePath,
-      );
-    } catch (e) {
-      debugPrint('[AudioVault:Cast] Failed to start server: $e');
-      _casting = false;
-      _castingController.add(false);
-      if (wasPlaying) _player.play();
-      return;
-    }
-
-    // Build cover URL if available.
-    Uri? coverUrl;
-    if (_book!.coverImagePath != null) {
-      coverUrl = Uri.parse('$_castBaseUrl/cover');
-    }
-
-    final client = GoogleCastRemoteMediaClient.instance;
-
-    // Listen to Cast status and position for UI + state broadcasting.
-    _castStatusSub = client.mediaStatusStream.listen(_onCastStatusChanged);
-    _castPositionSub = client.playerPositionStream.listen((pos) {
-      _effectivePositionController.add(pos);
-    });
-
-    // Start periodic position save during Cast playback.
-    _persister.stopPeriodic();
-    _persister.startPeriodic();
-
-    try {
-      if (_book!.audioFiles.length == 1) {
-        // Single file (M4B or single MP3).
-        await client.loadMedia(
-          GoogleCastMediaInformation(
-            contentId: _book!.path,
-            streamType: CastMediaStreamType.buffered,
-            contentUrl: Uri.parse('$_castBaseUrl/audio/0'),
-            contentType: _castMimeType(_book!.audioFiles[0]),
-            metadata: GoogleCastMusicMediaMetadata(
-              title: _book!.title,
-              artist: _book!.author,
-              images: coverUrl != null
-                  ? [GoogleCastImage(url: coverUrl)]
-                  : null,
-            ),
-            duration: _book!.duration,
-          ),
-          autoPlay: wasPlaying,
-          playPosition: position,
-          playbackRate: speed,
-        );
-        // Emit the full-file duration for the UI slider.
-        _effectiveDurationController.add(_book!.duration);
-      } else {
-        // Multi-file: load as a queue.
-        final items = _book!.audioFiles.asMap().entries.map((e) {
-          return GoogleCastQueueItem(
-            mediaInformation: GoogleCastMediaInformation(
-              contentId: '${_book!.path}/${e.key}',
-              streamType: CastMediaStreamType.buffered,
-              contentUrl: Uri.parse('$_castBaseUrl/audio/${e.key}'),
-              contentType: _castMimeType(e.value),
-              metadata: GoogleCastMusicMediaMetadata(
-                title: _book!.title,
-                artist: _book!.author,
-                images: coverUrl != null
-                    ? [GoogleCastImage(url: coverUrl)]
-                    : null,
-              ),
-              duration: e.key < _book!.chapterDurations.length
-                  ? _book!.chapterDurations[e.key]
-                  : null,
-            ),
-          );
-        }).toList();
-
-        await client.queueLoadItems(
-          items,
-          options: GoogleCastQueueLoadOptions(
-            startIndex: currentIndex,
-            playPosition: position,
-          ),
-        );
-        if (wasPlaying) await client.play();
-        await client.setPlaybackRate(speed);
-        // Emit the current chapter's duration.
-        if (currentIndex < _book!.chapterDurations.length) {
-          _effectiveDurationController
-              .add(_book!.chapterDurations[currentIndex]);
-        }
-      }
-      TelemetryService.logEvent('cast_start', parameters: {
-        'file_count': _book!.audioFiles.length,
-      });
-    } catch (e) {
-      debugPrint('[AudioVault:Cast] Failed to load media on Cast: $e');
-      // Fall back to local playback.
-      _casting = false;
-      _castingController.add(false);
-      _castSessionSub?.cancel();
-      _castSessionSub = null;
-      _castStatusSub?.cancel();
-      _castPositionSub?.cancel();
-      _persister.stopPeriodic();
-      await _castServer.stop();
-      if (wasPlaying) _player.play();
-    }
-  }
-
-  Future<void> _stopCasting() async {
-    if (!_casting) return;
-
-    // Grab Cast position before tearing down.
-    Duration castPosition = Duration.zero;
-    try {
-      castPosition =
-          GoogleCastRemoteMediaClient.instance.playerPosition;
-    } catch (_) {}
-
-    _castSessionSub?.cancel();
-    _castSessionSub = null;
-    _castStatusSub?.cancel();
-    _castPositionSub?.cancel();
-    _persister.stopPeriodic();
-    _castStatusSub = null;
-    _castPositionSub = null;
-
-    await _castServer.stop();
-
-    TelemetryService.logEvent('cast_stop');
-
-    _casting = false;
-    _castingController.add(false);
-
-    // Resume local playback at the Cast position.
-    if (_book != null) {
-      await _player.seek(castPosition);
-      // Re-broadcast local streams.
-      _effectivePositionController.add(_player.position);
-      _effectiveDurationController.add(_player.duration);
-    }
-  }
-
-  void _onCastStatusChanged(GoggleCastMediaStatus? status) {
-    if (status == null) return;
-
-    // Map Cast player state to audio_service state for notification controls.
-    final AudioProcessingState processingState;
-    final bool playing;
-
-    switch (status.playerState) {
-      case CastMediaPlayerState.playing:
-        processingState = AudioProcessingState.ready;
-        playing = true;
-      case CastMediaPlayerState.paused:
-        processingState = AudioProcessingState.ready;
-        playing = false;
-      case CastMediaPlayerState.buffering:
-        processingState = AudioProcessingState.buffering;
-        playing = true;
-      case CastMediaPlayerState.loading:
-        processingState = AudioProcessingState.loading;
-        playing = false;
-      default:
-        processingState = AudioProcessingState.idle;
-        playing = false;
-    }
-
-    final castPosition =
-        GoogleCastRemoteMediaClient.instance.playerPosition;
+  /// Invoked by [CastController] whenever the receiver reports a new status.
+  /// Translates it into the platform notification state + media item.
+  void _onCastStatusChanged(GoggleCastMediaStatus status) {
+    final mapped = mapCastPlayerState(status.playerState);
+    final castPosition = _cast.position;
 
     playbackState.add(playbackState.value.copyWith(
       controls: [
         _rewindControl,
         MediaControl.skipToPrevious,
-        playing ? MediaControl.pause : MediaControl.play,
+        mapped.playing ? MediaControl.pause : MediaControl.play,
         MediaControl.skipToNext,
         _forwardControl,
       ],
       systemActions: const {MediaAction.seek},
       androidCompactActionIndices: const [1, 2, 3],
-      processingState: processingState,
-      playing: playing,
+      processingState: mapped.processingState,
+      playing: mapped.playing,
       updatePosition: castPosition,
       speed: status.playbackRate.toDouble(),
     ));
 
-    // Update duration from Cast media info when queue item changes.
     final dur = status.mediaInformation?.duration;
-    if (dur != null) {
-      _effectiveDurationController.add(dur);
-    }
+    if (dur != null) _effectiveDurationController.add(dur);
 
     if (_book != null) _updateMediaItem();
   }
-
-  Future<void> _saveCastPosition() async {
-    if (_book == null || !_casting) return;
-    await _persister.save();
-  }
-
-  static String _castMimeType(String path) => CastServer.mimeType(path);
 
   // ── Completion handling ────────────────────────────────────────────────────
 
@@ -424,20 +214,14 @@ class AudioVaultHandler extends BaseAudioHandler {
     }
     _updateMediaItem();
 
-    // If already casting, load the new book on the Cast device.
-    if (_casting) {
-      await _stopCasting();
-      // Session is still connected, so restart casting with the new book.
-      final connected =
-          GoogleCastSessionManager.instance.connectionState ==
-          GoogleCastConnectState.connected;
-      if (connected) await _startCasting();
+    // If already casting, re-cast the new book.
+    if (isCasting) {
+      await _cast.stop();
+      if (_cast.isSessionConnected) await _cast.start();
     }
   }
 
   // ── Position persistence ───────────────────────────────────────────────────
-
-  Future<void> _savePosition() => _persister.save();
 
   /// Kept as a redirect for existing tests; real implementation is in
   /// `position_persister.dart`.
@@ -487,9 +271,7 @@ class AudioVaultHandler extends BaseAudioHandler {
       final pausedDuration = DateTime.now().difference(_lastPausedAt!);
       final rewindAmount = getRewindOffset(pausedDuration);
       if (rewindAmount > Duration.zero) {
-        final currentPos = _casting
-            ? GoogleCastRemoteMediaClient.instance.playerPosition
-            : _player.position;
+        final currentPos = isCasting ? _cast.position : _player.position;
         var newPos = currentPos - rewindAmount;
         if (newPos < Duration.zero) newPos = Duration.zero;
         await seek(newPos);
@@ -497,8 +279,8 @@ class AudioVaultHandler extends BaseAudioHandler {
     }
     _lastPausedAt = null;
 
-    if (_casting) {
-      await GoogleCastRemoteMediaClient.instance.play();
+    if (isCasting) {
+      await _cast.play();
     } else {
       await _player.play();
     }
@@ -507,9 +289,9 @@ class AudioVaultHandler extends BaseAudioHandler {
   @override
   Future<void> pause() async {
     _lastPausedAt = DateTime.now();
-    if (_casting) {
-      await GoogleCastRemoteMediaClient.instance.pause();
-      _saveCastPosition();
+    if (isCasting) {
+      await _cast.pause();
+      _persister.save();
     } else {
       await _player.pause();
     }
@@ -517,14 +299,8 @@ class AudioVaultHandler extends BaseAudioHandler {
 
   @override
   Future<void> seek(Duration position) async {
-    if (_casting) {
-      await GoogleCastRemoteMediaClient.instance.seek(
-        GoogleCastMediaSeekOption(
-          position: position,
-          relative: false,
-          resumeState: GoogleCastMediaResumeState.unchanged,
-        ),
-      );
+    if (isCasting) {
+      await _cast.seekAbsolute(position);
     } else {
       await _player.seek(position);
     }
@@ -532,31 +308,27 @@ class AudioVaultHandler extends BaseAudioHandler {
 
   @override
   Future<void> skipToNext() async {
-    if (_casting) {
+    if (isCasting) {
       final chapters = _book?.chapters;
       if (chapters != null && chapters.isNotEmpty) {
-        // M4B: seek to next embedded chapter on Cast.
-        final pos = GoogleCastRemoteMediaClient.instance.playerPosition;
-        final idx = _book!.chapterIndexAt(pos);
+        final idx = _book!.chapterIndexAt(_cast.position);
         if (idx < chapters.length - 1) {
           await seek(chapters[idx + 1].start);
         }
       } else {
-        await GoogleCastRemoteMediaClient.instance.queueNextItem();
+        await _cast.queueNext();
       }
       return;
     }
 
     final chapters = _book?.chapters;
     if (chapters != null && chapters.isNotEmpty) {
-      // M4B: seek to start of next embedded chapter
       final idx = _book!.chapterIndexAt(_player.position);
       if (idx < chapters.length - 1) {
         await _player.seek(chapters[idx + 1].start);
       }
       return;
     }
-    // Multi-file: seek to next file
     final idx = _player.currentIndex ?? 0;
     final len = _player.sequence.length;
     if (idx < len - 1) await _player.seekToNext();
@@ -564,11 +336,10 @@ class AudioVaultHandler extends BaseAudioHandler {
 
   @override
   Future<void> skipToPrevious() async {
-    if (_casting) {
+    if (isCasting) {
       final chapters = _book?.chapters;
       if (chapters != null && chapters.isNotEmpty) {
-        // M4B: restart chapter or go to previous.
-        final pos = GoogleCastRemoteMediaClient.instance.playerPosition;
+        final pos = _cast.position;
         final idx = _book!.chapterIndexAt(pos);
         final chapterStart = chapters[idx].start;
         if (pos - chapterStart > const Duration(seconds: 5)) {
@@ -579,7 +350,7 @@ class AudioVaultHandler extends BaseAudioHandler {
           await seek(Duration.zero);
         }
       } else {
-        await GoogleCastRemoteMediaClient.instance.queuePrevItem();
+        await _cast.queuePrev();
       }
       return;
     }
@@ -597,7 +368,6 @@ class AudioVaultHandler extends BaseAudioHandler {
       }
       return;
     }
-    // Multi-file: restart file or go to previous
     if (_player.position > const Duration(seconds: 5)) {
       await _player.seek(Duration.zero);
     } else {
@@ -614,14 +384,8 @@ class AudioVaultHandler extends BaseAudioHandler {
   Future<void> fastForward() async {
     final secs = await locator<PreferencesService>().getSkipInterval();
     final interval = Duration(seconds: secs);
-    if (_casting) {
-      await GoogleCastRemoteMediaClient.instance.seek(
-        GoogleCastMediaSeekOption(
-          position: interval,
-          relative: true,
-          resumeState: GoogleCastMediaResumeState.unchanged,
-        ),
-      );
+    if (isCasting) {
+      await _cast.seekRelative(interval);
       return;
     }
     final dur = _player.duration ?? Duration.zero;
@@ -633,14 +397,8 @@ class AudioVaultHandler extends BaseAudioHandler {
   Future<void> rewind() async {
     final secs = await locator<PreferencesService>().getSkipInterval();
     final interval = Duration(seconds: secs);
-    if (_casting) {
-      await GoogleCastRemoteMediaClient.instance.seek(
-        GoogleCastMediaSeekOption(
-          position: Duration(seconds: -secs),
-          relative: true,
-          resumeState: GoogleCastMediaResumeState.unchanged,
-        ),
-      );
+    if (isCasting) {
+      await _cast.seekRelative(Duration(seconds: -secs));
       return;
     }
     final pos = _player.position - interval;
@@ -649,8 +407,8 @@ class AudioVaultHandler extends BaseAudioHandler {
 
   @override
   Future<void> setSpeed(double speed) async {
-    if (_casting) {
-      await GoogleCastRemoteMediaClient.instance.setPlaybackRate(speed);
+    if (isCasting) {
+      await _cast.setSpeed(speed);
     }
     // Always set local speed too so it's remembered.
     await _player.setSpeed(speed);
@@ -658,13 +416,11 @@ class AudioVaultHandler extends BaseAudioHandler {
 
   @override
   Future<void> stop() async {
-    if (_casting) {
-      await _saveCastPosition();
-      try {
-        await GoogleCastRemoteMediaClient.instance.stop();
-      } catch (_) {}
+    if (isCasting) {
+      await _persister.save();
+      await _cast.stopClient();
     }
-    await _savePosition();
+    await _persister.save();
     await _player.stop();
     return super.stop();
   }
@@ -689,7 +445,7 @@ class AudioVaultHandler extends BaseAudioHandler {
   );
 
   void _broadcastState(PlaybackEvent? event) {
-    if (_casting) return; // Cast status drives the broadcast when casting.
+    if (isCasting) return; // Cast status drives the broadcast when casting.
 
     final playing = _player.playing;
     playbackState.add(playbackState.value.copyWith(
