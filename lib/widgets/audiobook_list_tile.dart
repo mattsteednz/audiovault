@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
+import '../locator.dart';
 import '../models/audiobook.dart';
+import '../services/enrichment_service.dart';
 import 'book_cover.dart';
 import 'drive_download_overlay.dart';
 
@@ -33,9 +35,9 @@ class AudiobookListTile extends StatelessWidget {
                 book: book,
                 iconSize: 24,
                 indicatorSize: 24,
-                child: BookCover(book: book, iconSize: 28),
+                child: _EnrichmentAwareCover(book: book, iconSize: 28),
               )
-            : BookCover(book: book, iconSize: 28),
+            : _EnrichmentAwareCover(book: book, iconSize: 28),
       ),
     );
 
@@ -127,5 +129,38 @@ class AudiobookListTile extends StatelessWidget {
     final m = d.inMinutes.remainder(60);
     if (h > 0) return '${h}h ${m}m';
     return '${m}m';
+  }
+}
+
+/// BookCover wrapper that reflects [EnrichmentService] state so the user can
+/// distinguish "fetching a cover right now" from "no cover available".
+class _EnrichmentAwareCover extends StatelessWidget {
+  final Audiobook book;
+  final double iconSize;
+
+  const _EnrichmentAwareCover({required this.book, required this.iconSize});
+
+  @override
+  Widget build(BuildContext context) {
+    if (book.coverImageBytes != null || book.coverImagePath != null) {
+      return BookCover(book: book, iconSize: iconSize);
+    }
+    final service = locator<EnrichmentService>();
+    return ValueListenableBuilder<Set<String>>(
+      valueListenable: service.enrichingPaths,
+      builder: (_, enriching, __) {
+        return ValueListenableBuilder<Set<String>>(
+          valueListenable: service.failedPaths,
+          builder: (_, failed, __) {
+            return BookCover(
+              book: book,
+              iconSize: iconSize,
+              isEnriching: enriching.contains(book.path),
+              enrichmentFailed: failed.contains(book.path),
+            );
+          },
+        );
+      },
+    );
   }
 }

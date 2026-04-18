@@ -21,6 +21,36 @@ class EnrichmentService {
   Stream<({String bookPath, String coverPath})> get onCoverFetched =>
       _controller.stream;
 
+  /// Book paths currently being enriched. UIs can watch this to show a
+  /// per-card spinner while a cover fetch is in flight.
+  final ValueNotifier<Set<String>> enrichingPaths =
+      ValueNotifier<Set<String>>(const {});
+
+  /// Book paths whose enrichment finished without finding a cover this
+  /// session. UIs can use this to render a distinct "no cover available"
+  /// placeholder instead of the default unprocessed-looking one.
+  final ValueNotifier<Set<String>> failedPaths =
+      ValueNotifier<Set<String>>(const {});
+
+  void _markEnriching(String path) {
+    enrichingPaths.value = {...enrichingPaths.value, path};
+  }
+
+  void _unmarkEnriching(String path) {
+    final next = {...enrichingPaths.value}..remove(path);
+    enrichingPaths.value = next;
+  }
+
+  void _markFailed(String path) {
+    failedPaths.value = {...failedPaths.value, path};
+  }
+
+  void _clearFailed(String path) {
+    if (!failedPaths.value.contains(path)) return;
+    final next = {...failedPaths.value}..remove(path);
+    failedPaths.value = next;
+  }
+
   Future<Database> get _database async {
     _db ??= await _openDb();
     return _db!;
@@ -115,23 +145,31 @@ class EnrichmentService {
   void dispose() {
     cancel();
     _controller.close();
+    enrichingPaths.dispose();
+    failedPaths.dispose();
   }
 
   Future<void> _enrichBook(Audiobook book) async {
     await _recordAttempt(book.path);
+    _markEnriching(book.path);
     _log('Fetching cover for "${book.title}"');
 
     try {
       final coverPath = await _fetchCoverForTitle(book.title);
       if (coverPath != null) {
         await _recordSuccess(book.path, coverPath);
+        _clearFailed(book.path);
         _controller.add((bookPath: book.path, coverPath: coverPath));
         _log('Cover saved for "${book.title}"');
       } else {
+        _markFailed(book.path);
         _log('No cover found for "${book.title}"');
       }
     } catch (e) {
+      _markFailed(book.path);
       _log('Error enriching "${book.title}": $e');
+    } finally {
+      _unmarkEnriching(book.path);
     }
   }
 
