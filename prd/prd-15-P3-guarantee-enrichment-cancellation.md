@@ -18,3 +18,16 @@
 
 ## Out of Scope
 - Persistent queue across app restarts.
+
+## Implementation Plan
+1. In `EnrichmentService`, replace ad-hoc HTTP calls with a field `http.Client _client = http.Client();` reused across requests.
+2. Wrap each request in `.timeout(const Duration(seconds: 10))` and catch `TimeoutException` as a non-fatal skip.
+3. Add `void cancel() { _cancelled = true; _client.close(); }` — closing the client aborts in-flight requests, which surface as `ClientException` in the loop and break out.
+4. Ensure the background loop checks `_cancelled` immediately after each `await` so it exits within one iteration.
+5. On `dispose()`, call `cancel()` and `await _loopCompleter.future.timeout(Duration(seconds: 1), onTimeout: () {})`.
+6. On rescan, instantiate a fresh `http.Client` (create in `enqueueBooks` if disposed).
+7. Add test with a mock client that hangs forever; call `cancel()` and assert the loop future completes in < 1s.
+
+## Files Impacted
+- `lib/services/enrichment_service.dart` (client lifecycle + cancel)
+- `test/services/enrichment_service_test.dart` (new cancel test)

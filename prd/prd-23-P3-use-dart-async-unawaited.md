@@ -18,3 +18,14 @@
 
 ## Out of Scope
 - Auditing every `Future` in the codebase for missing `await`.
+
+## Implementation Plan
+1. Add `import 'dart:async';` to `lib/screens/onboarding_screen.dart` (or `show unawaited` if other async types aren't needed).
+2. Delete the custom `void unawaited(Future<void> _) {}` helper at line 321.
+3. Grep `lib/` for other local definitions: `Grep "void unawaited"` and `Grep "unawaited(Future"` — replace any duplicates.
+4. Run `flutter analyze` to confirm no lints (especially `unawaited_futures`).
+5. Run `flutter test` to confirm no behavioural regressions.
+
+## Files Impacted
+- `lib/screens/onboarding_screen.dart` (import + delete helper)
+- Any other file with a shadowed helper (pending grep result)

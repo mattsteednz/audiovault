@@ -163,18 +163,7 @@ class PositionService {
         whereArgs: [bookPath],
         limit: 1);
     if (rows.isEmpty) return BookStatus.notStarted;
-    final row = rows.first;
-    final statusStr = row['status'] as String?;
-    if (statusStr != null) {
-      return BookStatus.values.firstWhere((s) => s.name == statusStr,
-          orElse: () => BookStatus.notStarted);
-    }
-    // Derive from position if no explicit status stored.
-    final globalMs = row['global_position_ms'] as int;
-    final totalMs = row['total_duration_ms'] as int;
-    if (globalMs <= 0) return BookStatus.notStarted;
-    if (totalMs > 0 && globalMs >= totalMs - 60000) return BookStatus.finished;
-    return BookStatus.inProgress;
+    return _statusFromRow(rows.first);
   }
 
   Future<Map<String, BookStatus>> getAllStatuses() async {
@@ -184,23 +173,38 @@ class PositionService {
     final result = <String, BookStatus>{};
     for (final row in rows) {
       final path = row['book_path'] as String;
-      final statusStr = row['status'] as String?;
-      if (statusStr != null) {
-        result[path] = BookStatus.values.firstWhere((s) => s.name == statusStr,
-            orElse: () => BookStatus.notStarted);
-      } else {
-        final globalMs = row['global_position_ms'] as int;
-        final totalMs = row['total_duration_ms'] as int;
-        if (globalMs <= 0) {
-          result[path] = BookStatus.notStarted;
-        } else if (totalMs > 0 && globalMs >= totalMs - 60000) {
-          result[path] = BookStatus.finished;
-        } else {
-          result[path] = BookStatus.inProgress;
-        }
-      }
+      result[path] = _statusFromRow(row);
     }
     return result;
+  }
+
+  // A finished book is one whose global position is within this many ms of
+  // the total duration — covers files where the final chapter has trailing
+  // silence or metadata the player never reaches.
+  static const int _finishedThresholdMs = 60000;
+
+  static BookStatus _statusFromRow(Map<String, Object?> row) {
+    final statusStr = row['status'] as String?;
+    if (statusStr != null) {
+      return BookStatus.values.firstWhere((s) => s.name == statusStr,
+          orElse: () => BookStatus.notStarted);
+    }
+    return _deriveStatus(
+      row['global_position_ms'] as int,
+      row['total_duration_ms'] as int,
+    );
+  }
+
+  @visibleForTesting
+  static BookStatus deriveStatusForTesting(int globalMs, int totalMs) =>
+      _deriveStatus(globalMs, totalMs);
+
+  static BookStatus _deriveStatus(int globalMs, int totalMs) {
+    if (globalMs <= 0) return BookStatus.notStarted;
+    if (totalMs > 0 && globalMs >= totalMs - _finishedThresholdMs) {
+      return BookStatus.finished;
+    }
+    return BookStatus.inProgress;
   }
 
   Future<String?> getLastPlayedBookPath() async {

@@ -18,3 +18,18 @@ After a scan, covers download silently in the background. Users watching the gri
 
 ## Out of Scope
 - Manual "refetch cover" button (separate enhancement).
+
+## Implementation Plan
+1. In `EnrichmentService`, maintain `final _enrichingIds = ValueNotifier<Set<String>>({})`; add a book's id before its HTTP request and remove on completion/failure.
+2. Also track `_failedIds` (book ids that finished enrichment with no cover) so the UI can distinguish "fetching" vs "no cover available".
+3. Expose both via getters or `ValueListenable` for efficient per-card rebuilds.
+4. In `AudiobookCard` / `AudiobookListTile`, wrap the placeholder with `ValueListenableBuilder` watching `_enrichingIds`; when `contains(book.id)`, render a Shimmer or a small `CircularProgressIndicator.adaptive` overlay.
+5. If not enriching and cover is null and id is in `_failedIds`, render a distinct "no cover" icon (e.g. `Icons.image_not_supported`) vs the default placeholder for unprocessed books.
+6. Verify scroll performance on a large fixture library (50+ books) — the ValueListenable approach avoids rebuilding the whole grid.
+7. Add widget tests asserting shimmer presence during enrichment and icon swap afterwards.
+
+## Files Impacted
+- `lib/services/enrichment_service.dart` (enriching/failed id tracking)
+- `lib/widgets/audiobook_card.dart` (overlay + placeholder swap)
+- `lib/widgets/audiobook_list_tile.dart` (same)
+- `test/widgets/audiobook_card_test.dart` (new/extended)
