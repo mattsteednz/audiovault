@@ -31,6 +31,15 @@ class ScannerService {
   // Audible formats — detected but not playable due to DRM.
   static const _drmExtensions = {'.aax', '.aa'};
 
+  /// Maximum folder depth below the library root that the scanner descends
+  /// into when looking for audiobooks.
+  ///
+  /// Depth is counted from (but not including) the library root:
+  /// `root/author/series/book` is depth 3. Supports three common layouts —
+  /// flat (`root/book`), author-grouped (`root/author/book`), and
+  /// author+series (`root/author/series/book`).
+  static const int maxScanDepth = 3;
+
   static void _log(String msg) => debugPrint('[AudioVault:Scanner] $msg');
 
   Future<List<Audiobook>> scanFolder(String folderPath,
@@ -84,8 +93,11 @@ class ScannerService {
   /// Tries to scan [dir] as a single book. If that fails (no audio files
   /// directly inside), treats it as an author/grouping folder and recurses into
   /// its subdirectories — up to [remainingDepth] extra levels deep.
+  ///
+  /// Default of `maxScanDepth - 1` accounts for [dir] itself already being
+  /// one level below root.
   Future<List<Audiobook>> _scanAsBookOrAuthorFolder(Directory dir,
-      {int remainingDepth = 2}) async {
+      {int remainingDepth = maxScanDepth - 1}) async {
     final book = await _scanSubfolder(dir);
     if (book != null) return [book];
 
