@@ -872,31 +872,57 @@ class _LibraryScreenState extends State<LibraryScreen> {
         _filterPillsRow(),
         Expanded(
           child: books.isEmpty
-              ? Center(
-                  child: Padding(
-                    padding: const EdgeInsets.all(32),
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        const Icon(Icons.search_off_rounded,
-                            size: 64, color: Colors.grey),
-                        const SizedBox(height: 16),
-                        Text(
-                          _statusFilter != null
-                              ? 'No ${_statusFilterLabel(_statusFilter!).toLowerCase()} books.'
-                              : 'No results for "$_searchQuery".',
-                          textAlign: TextAlign.center,
-                        ),
-                      ],
-                    ),
-                  ),
-                )
+              ? _noMatchesView()
               : _viewMode == _ViewMode.grid
                   ? _grid(books)
                   : _list(books),
         ),
       ],
     );
+  }
+
+  Widget _noMatchesView() {
+    final hasSearch = _searchQuery.isNotEmpty;
+    final hasFilter = _statusFilter != null;
+    final String message;
+    if (hasSearch && hasFilter) {
+      message =
+          'No ${_statusFilterLabel(_statusFilter!).toLowerCase()} books match "$_searchQuery".';
+    } else if (hasFilter) {
+      message = 'No ${_statusFilterLabel(_statusFilter!).toLowerCase()} books.';
+    } else {
+      message = 'No results for "$_searchQuery".';
+    }
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(32),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Icon(Icons.search_off_rounded,
+                size: 64, color: Colors.grey),
+            const SizedBox(height: 16),
+            Text(message, textAlign: TextAlign.center),
+            if (hasSearch || hasFilter) ...[
+              const SizedBox(height: 20),
+              TextButton.icon(
+                icon: const Icon(Icons.filter_alt_off_rounded),
+                label: const Text('Clear filters'),
+                onPressed: _clearSearchAndFilters,
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _clearSearchAndFilters() {
+    _searchController.clear();
+    setState(() {
+      _searchQuery = '';
+      _statusFilter = null;
+    });
   }
 
   String _statusFilterLabel(BookStatus s) => switch (s) {

@@ -81,4 +81,51 @@ void main() {
       expect(filterBooks([], 'dune'), isEmpty);
     });
   });
+
+  group('search + status filter AND-composition', () {
+    final books = [
+      _book('Dune', author: 'Frank Herbert'),
+      _book('Dune Messiah', author: 'Frank Herbert'),
+      _book('Foundation', author: 'Isaac Asimov'),
+      _book('The Hobbit', author: 'J.R.R. Tolkien'),
+    ];
+    final statuses = {
+      '/dummy/Dune': BookStatus.inProgress,
+      '/dummy/Dune Messiah': BookStatus.finished,
+      '/dummy/Foundation': BookStatus.inProgress,
+      // 'The Hobbit' not present → treated as notStarted
+    };
+
+    test('search + status filter narrows to intersection', () {
+      final bySearch = filterBooks(books, 'dune');
+      final combined = applyStatusFilter(bySearch, statuses, BookStatus.inProgress);
+      expect(combined.map((b) => b.title), ['Dune']);
+    });
+
+    test('search matches multiple but status filter narrows further', () {
+      final bySearch = filterBooks(books, 'dune');
+      expect(bySearch.length, 2); // "Dune" and "Dune Messiah"
+      final finished = applyStatusFilter(bySearch, statuses, BookStatus.finished);
+      expect(finished.map((b) => b.title), ['Dune Messiah']);
+    });
+
+    test('search with no status match returns empty', () {
+      final bySearch = filterBooks(books, 'hobbit');
+      final combined = applyStatusFilter(bySearch, statuses, BookStatus.inProgress);
+      expect(combined, isEmpty);
+    });
+
+    test('empty search with status filter behaves as filter only', () {
+      final bySearch = filterBooks(books, '');
+      final combined = applyStatusFilter(bySearch, statuses, BookStatus.inProgress);
+      expect(combined.map((b) => b.title), containsAll(['Dune', 'Foundation']));
+      expect(combined.length, 2);
+    });
+
+    test('null status filter with search behaves as search only', () {
+      final bySearch = filterBooks(books, 'dune');
+      final combined = applyStatusFilter(bySearch, statuses, null);
+      expect(combined.length, 2);
+    });
+  });
 }
