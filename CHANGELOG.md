@@ -2,15 +2,31 @@
 
 All notable changes to AudioVault are documented here.
 
-## [Unreleased]
+## [1.3.0] — 2026-04-19
+
+### Added
+
+- **Library sort menu** — New sort picker in the library AppBar with Last played, Title (A–Z), Author (A–Z), Date added, and Duration (longest first). Selection persists across launches.
+- **Sleep timer indicator outside the player** — A small countdown chip appears in the library AppBar when a sleep timer is running, so you can see remaining time without opening the player. Tap it to jump back into the current book.
+- **Visual feedback during cover enrichment** — Books being enriched in the background show a subtle loading indicator on their cover until the new artwork arrives.
+- **Playback error recovery** — Playback errors now surface a toast with a retry action instead of silently failing.
+- **Startup loading labels** — The initial library scan screen now labels what it's doing (scanning folder, syncing Drive, etc.) so long waits aren't opaque.
 
 ### Changed
 
+- **Combined search + filter empty state** — When a search query and a status filter both return nothing, the empty state names both constraints and offers a single "Clear filters" action.
 - **Drive sign-in logs** — User email is no longer included in debug logs; sign-in and session-restore events log a generic status string instead.
+- **Cast init errors** — Google Cast initialisation failures are now logged instead of being silently swallowed.
+
+### Fixed
+
+- **Library empty on launch when refresh-on-startup is off** — Previously discovered books (local and Drive) now load from cache on app open even when automatic rescan is disabled. Only the Drive network sync is skipped.
 
 ### Internal
 
-- Extracted pure helpers from `LibraryScreen` (status filter, last-played sort, byte formatting) and `DriveDownloadManager` (queue-selection decision), and expanded test coverage for Drive services and the book repository. 52 new tests, no behaviour change.
+- Extracted `PositionPersister`, `CastController`, `DriveRemovalScheduler`, and `MediaStateBroadcaster` out of `AudioVaultHandler`. PRD-12 archived.
+- Extracted pure helpers from `LibraryScreen` (status filter, last-played sort, byte formatting) and `DriveDownloadManager` (queue-selection decision). Scanner recursion depth named, `unawaited` standardised, position-service status derivation DRY'd.
+- 52+ new tests across Drive services, book repository, and player helpers. No behaviour change.
 
 ---
 

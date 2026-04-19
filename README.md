@@ -12,11 +12,11 @@ A Flutter audiobook player for Android and iOS with background playback, positio
 - **Chapter navigation** — chapter list drawn from audio metadata; swipe or tap to jump between chapters; M4B embedded QuickTime chapter tracks fully supported
 - **Position persistence** — resumes exactly where you left off across app restarts, using a local SQLite database
 - **Book status tracking** — books are automatically marked Not started, In progress, or Finished; filter the library by status using the pill row at the top
-- **Last-played sort** — library sorted by most recently played; unread books follow alphabetically
+- **Library sort** — pick from Last played, Title (A–Z), Author (A–Z), Date added, or Duration (longest first); selection persists across launches
 - **Mini player** — persistent strip at the bottom of the library shows the current book title, remaining time, and a play/pause button
 - **Library search** — filter by title or author from the AppBar
 - **Book details** — long-press any book for a details sheet with metadata and Drive download controls
-- **Playback controls** — variable speed (0.5×–3.0×), configurable skip interval (10–60 s), custom sleep timer, smart rewind on resume
+- **Playback controls** — variable speed (0.5×–3.0×), configurable skip interval (10–60 s), custom sleep timer with an always-visible countdown chip in the AppBar, smart rewind on resume, error retry toast
 - **Settings screen** — audiobooks folder, Drive connection, theme (light/dark/system), enrichment, rewind, skip interval, startup scan toggle, and telemetry
 - **Telemetry opt-in** — first-run consent prompt; anonymous crash reports and usage data via Google Firebase (can be toggled off anytime in Settings)
 
@@ -92,22 +92,29 @@ lib/
     settings_screen.dart       # All app settings
   services/
     audio_handler.dart         # AudioVaultHandler (audio_service)
+    cast_controller.dart       # Cast session + queue management
     cast_server.dart           # On-device HTTP server for Cast streaming
     drive_book_repository.dart # Drive file metadata DB
     drive_download_manager.dart# Download queue and progress events
     drive_library_service.dart # Drive scan, download, promote to local
+    drive_removal_scheduler.dart # Auto-remove downloaded Drive files on finish
     drive_service.dart         # Google Sign-In + Drive API wrapper
     enrichment_service.dart    # Background cover fetching (Open Library)
+    media_state_broadcaster.dart # Centralised playback/media-item updates
+    position_persister.dart    # Debounced position writes
     position_service.dart      # SQLite position persistence
     preferences_service.dart   # SharedPreferences wrapper
     scanner_service.dart       # Folder scanner + metadata reader
+    sleep_timer_controller.dart # Sleep timer countdown + fade-out
     telemetry_service.dart     # Firebase analytics/crashlytics guard
   widgets/
     audio_handler_scope.dart   # InheritedWidget for audioHandler + theme
     audiobook_card.dart        # Grid card widget
     audiobook_list_tile.dart   # List row widget
     book_cover.dart            # Shared cover art / placeholder widget
+    drive_download_overlay.dart # Per-card download progress overlay
     drive_folder_picker.dart   # Drive folder browser dialog
+    sleep_timer_indicator.dart # AppBar countdown chip
 ```
 
 ## Android Permissions
