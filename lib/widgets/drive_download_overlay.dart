@@ -137,15 +137,16 @@ class _DriveDownloadOverlayState extends State<DriveDownloadOverlay> {
       children: [
         widget.child,
 
-        // Grey tint + download icon for not-downloaded books
+        // Download icon for not-downloaded books (no scrim — let the
+        // placeholder colour show through)
         if (_state == _OverlayState.notDownloaded)
           Positioned.fill(
             child: IgnorePointer(
-              child: Container(
-                color: Colors.black.withValues(alpha: 0.55),
-                child: Center(
-                  child: Icon(Icons.download_for_offline,
-                      size: widget.iconSize, color: Colors.white),
+              child: Center(
+                child: Icon(
+                  Icons.download_for_offline,
+                  size: widget.iconSize,
+                  color: Colors.white.withValues(alpha: 0.85),
                 ),
               ),
             ),

@@ -11,6 +11,7 @@ class AudiobookListTile extends StatelessWidget {
   final VoidCallback? onDetailsPressed;
   final bool isActive;
   final BookStatus status;
+  final int? placeholderIndex;
 
   const AudiobookListTile({
     super.key,
@@ -19,6 +20,7 @@ class AudiobookListTile extends StatelessWidget {
     this.onDetailsPressed,
     this.isActive = false,
     this.status = BookStatus.notStarted,
+    this.placeholderIndex,
   });
 
   @override
@@ -35,9 +37,17 @@ class AudiobookListTile extends StatelessWidget {
                 book: book,
                 iconSize: 24,
                 indicatorSize: 24,
-                child: _EnrichmentAwareCover(book: book, iconSize: 28),
+                child: _EnrichmentAwareCover(
+                  book: book,
+                  iconSize: 28,
+                  placeholderIndex: placeholderIndex,
+                ),
               )
-            : _EnrichmentAwareCover(book: book, iconSize: 28),
+            : _EnrichmentAwareCover(
+                book: book,
+                iconSize: 28,
+                placeholderIndex: placeholderIndex,
+              ),
       ),
     );
 
@@ -137,13 +147,22 @@ class AudiobookListTile extends StatelessWidget {
 class _EnrichmentAwareCover extends StatelessWidget {
   final Audiobook book;
   final double iconSize;
+  final int? placeholderIndex;
 
-  const _EnrichmentAwareCover({required this.book, required this.iconSize});
+  const _EnrichmentAwareCover({
+    required this.book,
+    required this.iconSize,
+    this.placeholderIndex,
+  });
 
   @override
   Widget build(BuildContext context) {
     if (book.coverImageBytes != null || book.coverImagePath != null) {
-      return BookCover(book: book, iconSize: iconSize);
+      return BookCover(
+        book: book,
+        iconSize: iconSize,
+        placeholderIndex: placeholderIndex,
+      );
     }
     final service = locator<EnrichmentService>();
     return ValueListenableBuilder<Set<String>>(
@@ -157,6 +176,7 @@ class _EnrichmentAwareCover extends StatelessWidget {
               iconSize: iconSize,
               isEnriching: enriching.contains(book.path),
               enrichmentFailed: failed.contains(book.path),
+              placeholderIndex: placeholderIndex,
             );
           },
         );

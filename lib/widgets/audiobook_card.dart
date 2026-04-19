@@ -11,6 +11,7 @@ class AudiobookCard extends StatelessWidget {
   final VoidCallback? onLongPress;
   final bool isActive;
   final BookStatus status;
+  final int? placeholderIndex;
 
   const AudiobookCard({
     super.key,
@@ -19,6 +20,7 @@ class AudiobookCard extends StatelessWidget {
     this.onLongPress,
     this.isActive = false,
     this.status = BookStatus.notStarted,
+    this.placeholderIndex,
   });
 
   @override
@@ -28,7 +30,11 @@ class AudiobookCard extends StatelessWidget {
     Widget coverStack = Stack(
       fit: StackFit.expand,
       children: [
-        _EnrichmentAwareCover(book: book, iconSize: 52),
+        _EnrichmentAwareCover(
+          book: book,
+          iconSize: 52,
+          placeholderIndex: placeholderIndex,
+        ),
         if (book.isDrmLocked)
           Positioned.fill(
             child: ColoredBox(
@@ -119,14 +125,23 @@ class AudiobookCard extends StatelessWidget {
 class _EnrichmentAwareCover extends StatelessWidget {
   final Audiobook book;
   final double iconSize;
+  final int? placeholderIndex;
 
-  const _EnrichmentAwareCover({required this.book, required this.iconSize});
+  const _EnrichmentAwareCover({
+    required this.book,
+    required this.iconSize,
+    this.placeholderIndex,
+  });
 
   @override
   Widget build(BuildContext context) {
     // No enrichment happens for books that already have local cover data.
     if (book.coverImageBytes != null || book.coverImagePath != null) {
-      return BookCover(book: book, iconSize: iconSize);
+      return BookCover(
+        book: book,
+        iconSize: iconSize,
+        placeholderIndex: placeholderIndex,
+      );
     }
     final service = locator<EnrichmentService>();
     return ValueListenableBuilder<Set<String>>(
@@ -140,6 +155,7 @@ class _EnrichmentAwareCover extends StatelessWidget {
               iconSize: iconSize,
               isEnriching: enriching.contains(book.path),
               enrichmentFailed: failed.contains(book.path),
+              placeholderIndex: placeholderIndex,
             );
           },
         );

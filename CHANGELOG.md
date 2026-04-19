@@ -2,6 +2,25 @@
 
 All notable changes to AudioVault are documented here.
 
+## [1.4.0] — 2026-04-19
+
+### Changed
+
+- **Library header redesign** — The AppBar is pared back to Sleep Timer, Search, and a ⋯ overflow menu (Listen history, Rescan library, Settings). The title "My Library" is always fully visible.
+- **Inline search bar** — Tapping Search expands an animated search bar below the header instead of replacing the title.
+- **View bar** — A new pinned row below the header shows the filtered book count and active filter/sort summary, with grid/list toggle on the left and Filter + Sort buttons on the right.
+- **Filter and Sort bottom sheets** — Progress filtering moves into a Filter sheet with an explicit "All" pill as the default. Sort moves into its own sheet — a simple list with a check against the active option and a Cancel action. Both sheets auto-apply on tap.
+- **Coloured placeholder tiles** — Books without cover art now render as deterministic jewel-tone tiles allocated sequentially across the grid/list so adjacent placeholders never share a colour. The default book icon has been removed for a cleaner look.
+- **Frosted-glass mini player** — The mini player uses a backdrop blur so it reads as a floating layer above the library content.
+- **Drive tiles** — Removed the dark scrim over undownloaded Drive books; the download icon sits directly on the cover/placeholder for a lighter visual weight.
+
+### Removed
+
+- The old filter chip row above the library grid (replaced by the Filter sheet).
+- The standalone sort icon, view-toggle icon, rescan icon, history icon, and settings icon in the AppBar (consolidated into the ⋯ menu and view bar).
+
+---
+
 ## [1.3.0] — 2026-04-19
 
 ### Added

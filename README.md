@@ -11,10 +11,11 @@ A Flutter audiobook player for Android and iOS with background playback, positio
 - **Google Cast** — stream to any Chromecast or Cast-enabled speaker directly from the player
 - **Chapter navigation** — chapter list drawn from audio metadata; swipe or tap to jump between chapters; M4B embedded QuickTime chapter tracks fully supported
 - **Position persistence** — resumes exactly where you left off across app restarts, using a local SQLite database
-- **Book status tracking** — books are automatically marked Not started, In progress, or Finished; filter the library by status using the pill row at the top
-- **Library sort** — pick from Last played, Title (A–Z), Author (A–Z), Date added, or Duration (longest first); selection persists across launches
-- **Mini player** — persistent strip at the bottom of the library shows the current book title, remaining time, and a play/pause button
-- **Library search** — filter by title or author from the AppBar
+- **Book status tracking** — books are automatically marked Not started, In progress, or Finished; filter the library by status from the Filter sheet
+- **Library sort** — pick from Last played, Title A–Z, Author A–Z, Recently added, or Longest first; selection persists across launches
+- **Library view bar** — pinned row below the header with a grid/list toggle, live-filtered book count, active-filter summary, and Filter + Sort buttons
+- **Mini player** — persistent, frosted-glass strip at the bottom of the library showing the current book title, remaining time, and a play/pause button
+- **Library search** — expanding inline search bar below the header filters by title or author
 - **Book details** — long-press any book for a details sheet with metadata and Drive download controls
 - **Playback controls** — variable speed (0.5×–3.0×), configurable skip interval (10–60 s), custom sleep timer with an always-visible countdown chip in the AppBar, smart rewind on resume, error retry toast
 - **Settings screen** — audiobooks folder, Drive connection, theme (light/dark/system), enrichment, rewind, skip interval, startup scan toggle, and telemetry

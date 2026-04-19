@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:io' show File, SocketException;
+import 'dart:ui' show ImageFilter;
 import 'package:audio_service/audio_service.dart';
 import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:flutter/material.dart';
@@ -668,122 +669,100 @@ class _LibraryScreenState extends State<LibraryScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        leading: _isSearching
-            ? IconButton(
-                icon: const Icon(Icons.arrow_back_rounded),
-                onPressed: _closeSearch,
-                tooltip: 'Cancel search',
-              )
-            : null,
-        title: _isSearching
-            ? TextField(
-                controller: _searchController,
-                autofocus: true,
-                decoration: const InputDecoration(
-                  hintText: 'Search by title or author…',
-                  border: InputBorder.none,
-                ),
-                onChanged: (v) => setState(() => _searchQuery = v),
-              )
-            : const Text('My Library'),
-        actions: _isSearching
-            ? [
-                if (_searchQuery.isNotEmpty)
-                  IconButton(
-                    icon: const Icon(Icons.clear_rounded),
-                    onPressed: () {
-                      _searchController.clear();
-                      setState(() => _searchQuery = '');
-                    },
-                    tooltip: 'Clear',
-                  ),
-              ]
-            : [
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 4),
-                  child: Center(
-                    child: SleepTimerIndicator(
-                      onTap: _openCurrentBookPlayer,
-                    ),
-                  ),
-                ),
-                IconButton(
-                  icon: const Icon(Icons.search_rounded),
-                  onPressed: _books != null && _books!.isNotEmpty
-                      ? _openSearch
-                      : null,
-                  tooltip: 'Search',
-                ),
-                IconButton(
-                  icon: const Icon(Icons.history_rounded),
-                  onPressed: () {
-                    final books = _rawBooks;
-                    if (books != null) {
-                      Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                            builder: (_) => HistoryScreen(books: books)),
-                      );
-                    }
-                  },
-                  tooltip: 'History',
-                ),
-                PopupMenuButton<LibrarySortOrder>(
-                  tooltip: 'Sort by',
-                  icon: const Icon(Icons.sort_rounded),
-                  onSelected: _setSortOrder,
-                  itemBuilder: (_) => [
-                    for (final order in LibrarySortOrder.values)
-                      CheckedPopupMenuItem(
-                        value: order,
-                        checked: order == _sortOrder,
-                        child: Text(order.label),
-                      ),
-                  ],
-                ),
-                IconButton(
-                  icon: Icon(_viewMode == _ViewMode.grid
-                      ? Icons.view_list_rounded
-                      : Icons.grid_view_rounded),
-                  onPressed: () => setState(() => _viewMode =
-                      _viewMode == _ViewMode.grid
-                          ? _ViewMode.list
-                          : _ViewMode.grid),
-                  tooltip:
-                      _viewMode == _ViewMode.grid ? 'List view' : 'Grid view',
-                ),
-                IconButton(
-                  icon: _syncing
-                      ? const SizedBox(
-                          width: 20,
-                          height: 20,
-                          child: CircularProgressIndicator(strokeWidth: 2),
-                        )
-                      : const Icon(Icons.refresh_rounded),
-                  onPressed: _syncing ? null : _scan,
-                  tooltip: 'Rescan',
-                ),
-                IconButton(
-                  icon: const Icon(Icons.settings_rounded),
-                  onPressed: () => Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (_) => SettingsScreen(
-                        onFolderChanged: _scan,
-                        onDriveRescanned: _scan,
-                      ),
-                    ),
-                  ),
-                  tooltip: 'Settings',
-                ),
-              ],
+        title: const Text('My Library'),
+        actions: [
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 4),
+            child: Center(
+              child: SleepTimerIndicator(onTap: _openCurrentBookPlayer),
+            ),
+          ),
+          IconButton(
+            icon: Icon(_isSearching
+                ? Icons.close_rounded
+                : Icons.search_rounded),
+            onPressed: _isSearching
+                ? _closeSearch
+                : (_books != null && _books!.isNotEmpty ? _openSearch : null),
+            tooltip: _isSearching ? 'Close search' : 'Search',
+          ),
+          _OverflowMenu(
+            syncing: _syncing,
+            onHistory: _openHistory,
+            onRescan: _syncing ? null : _scan,
+            onSettings: _openSettings,
+          ),
+          const SizedBox(width: 4),
+        ],
       ),
       body: Column(
         children: [
+          _searchBar(),
           Expanded(child: _body()),
           _MiniPlayer(),
         ],
       ),
+    );
+  }
+
+  void _openHistory() {
+    final books = _rawBooks;
+    if (books == null) return;
+    Navigator.push(
+      context,
+      MaterialPageRoute(builder: (_) => HistoryScreen(books: books)),
+    );
+  }
+
+  void _openSettings() {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => SettingsScreen(
+          onFolderChanged: _scan,
+          onDriveRescanned: _scan,
+        ),
+      ),
+    );
+  }
+
+  Widget _searchBar() {
+    final theme = Theme.of(context);
+    return AnimatedSize(
+      duration: const Duration(milliseconds: 180),
+      curve: Curves.easeInOut,
+      alignment: Alignment.topCenter,
+      child: _isSearching
+          ? Padding(
+              padding: const EdgeInsets.fromLTRB(12, 8, 12, 4),
+              child: TextField(
+                controller: _searchController,
+                autofocus: true,
+                onChanged: (v) => setState(() => _searchQuery = v),
+                decoration: InputDecoration(
+                  hintText: 'Search by title or author…',
+                  prefixIcon: const Icon(Icons.search_rounded),
+                  suffixIcon: _searchQuery.isNotEmpty
+                      ? IconButton(
+                          icon: const Icon(Icons.clear_rounded),
+                          onPressed: () {
+                            _searchController.clear();
+                            setState(() => _searchQuery = '');
+                          },
+                          tooltip: 'Clear',
+                        )
+                      : null,
+                  filled: true,
+                  fillColor: theme.colorScheme.surfaceContainerHighest,
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(24),
+                    borderSide: BorderSide.none,
+                  ),
+                  contentPadding: const EdgeInsets.symmetric(vertical: 0),
+                ),
+              ),
+            )
+          : const SizedBox(width: double.infinity),
     );
   }
 
@@ -883,7 +862,7 @@ class _LibraryScreenState extends State<LibraryScreen> {
 
     return Column(
       children: [
-        _filterPillsRow(),
+        _viewBar(books.length),
         Expanded(
           child: books.isEmpty
               ? _noMatchesView()
@@ -892,6 +871,266 @@ class _LibraryScreenState extends State<LibraryScreen> {
                   : _list(books),
         ),
       ],
+    );
+  }
+
+  // ── View bar (pinned, below search) ─────────────────────────────────────────
+
+  Widget _viewBar(int count) {
+    final theme = Theme.of(context);
+    final cs = theme.colorScheme;
+    final hasStatus = _statusFilter != null;
+    final hasSort = _sortOrder != LibrarySortOrder.lastPlayed;
+
+    final summaryParts = <String>[];
+    if (hasStatus) summaryParts.add(_statusFilterLabel(_statusFilter!));
+    if (hasSort) summaryParts.add(_sortOrder.label);
+    final summary = summaryParts.isEmpty
+        ? null
+        : ' · ${summaryParts.join(' · ')}';
+
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(12, 4, 8, 4),
+      child: Row(
+        children: [
+          IconButton(
+            icon: Icon(_viewMode == _ViewMode.grid
+                ? Icons.view_list_rounded
+                : Icons.grid_view_rounded),
+            onPressed: () => setState(() => _viewMode =
+                _viewMode == _ViewMode.grid
+                    ? _ViewMode.list
+                    : _ViewMode.grid),
+            tooltip:
+                _viewMode == _ViewMode.grid ? 'List view' : 'Grid view',
+            visualDensity: VisualDensity.compact,
+          ),
+          const SizedBox(width: 4),
+          Expanded(
+            child: Text.rich(
+              TextSpan(
+                children: [
+                  TextSpan(
+                    text: count == 1 ? '1 book' : '$count books',
+                    style: theme.textTheme.bodyMedium?.copyWith(
+                      color: cs.onSurface.withValues(alpha: 0.8),
+                    ),
+                  ),
+                  if (summary != null)
+                    TextSpan(
+                      text: summary,
+                      style: theme.textTheme.bodyMedium?.copyWith(
+                        color: cs.primary,
+                      ),
+                    ),
+                ],
+              ),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+            ),
+          ),
+          _viewBarButton(
+            icon: Icons.tune_rounded,
+            active: hasStatus,
+            tooltip: 'Filter',
+            onPressed: _openFilterSheet,
+          ),
+          const SizedBox(width: 4),
+          _viewBarButton(
+            icon: Icons.sort_rounded,
+            active: hasSort,
+            tooltip: 'Sort',
+            onPressed: _openSortSheet,
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _viewBarButton({
+    required IconData icon,
+    required bool active,
+    required String tooltip,
+    required VoidCallback onPressed,
+  }) {
+    final cs = Theme.of(context).colorScheme;
+    return Material(
+      color: active
+          ? cs.primary.withValues(alpha: 0.14)
+          : Colors.transparent,
+      shape: const CircleBorder(),
+      child: IconButton(
+        icon: Icon(
+          icon,
+          color: active ? cs.primary : cs.onSurface.withValues(alpha: 0.75),
+        ),
+        tooltip: tooltip,
+        onPressed: onPressed,
+      ),
+    );
+  }
+
+  // ── Filter + Sort sheets ────────────────────────────────────────────────────
+
+  Future<void> _openFilterSheet() async {
+    await showModalBottomSheet<void>(
+      context: context,
+      showDragHandle: true,
+      backgroundColor: Theme.of(context).colorScheme.surfaceContainerHigh,
+      builder: (_) => StatefulBuilder(
+        builder: (sheetCtx, setSheetState) {
+          final theme = Theme.of(sheetCtx);
+          return Padding(
+            padding: EdgeInsets.fromLTRB(
+              20, 0, 20, 16 + MediaQuery.of(sheetCtx).viewInsets.bottom,
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text('Filter', style: theme.textTheme.titleLarge),
+                const SizedBox(height: 16),
+                Text(
+                  'PROGRESS',
+                  style: theme.textTheme.labelSmall?.copyWith(
+                    letterSpacing: 1.2,
+                    color: theme.colorScheme.onSurfaceVariant,
+                  ),
+                ),
+                const SizedBox(height: 10),
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: [
+                    _pill(
+                      label: 'All',
+                      selected: _statusFilter == null,
+                      onTap: () {
+                        setState(() => _statusFilter = null);
+                        setSheetState(() {});
+                      },
+                    ),
+                    for (final s in BookStatus.values)
+                      _pill(
+                        label: _statusFilterLabel(s),
+                        selected: _statusFilter == s,
+                        onTap: () {
+                          setState(() => _statusFilter = s);
+                          setSheetState(() {});
+                        },
+                      ),
+                  ],
+                ),
+                const SizedBox(height: 20),
+                Align(
+                  alignment: Alignment.centerLeft,
+                  child: TextButton.icon(
+                    icon: const Icon(Icons.filter_alt_off_rounded),
+                    label: const Text('Clear all'),
+                    onPressed: _statusFilter == null
+                        ? null
+                        : () {
+                            setState(() => _statusFilter = null);
+                            setSheetState(() {});
+                          },
+                  ),
+                ),
+              ],
+            ),
+          );
+        },
+      ),
+    );
+  }
+
+  Future<void> _openSortSheet() async {
+    await showModalBottomSheet<void>(
+      context: context,
+      showDragHandle: true,
+      backgroundColor: Theme.of(context).colorScheme.surfaceContainerHigh,
+      builder: (sheetCtx) {
+        final theme = Theme.of(sheetCtx);
+        return SafeArea(
+          top: false,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Padding(
+                padding: const EdgeInsets.fromLTRB(20, 0, 20, 8),
+                child: Text('Sort by', style: theme.textTheme.titleLarge),
+              ),
+              for (final order in LibrarySortOrder.values)
+                ListTile(
+                  title: Text(_sortPillLabel(order)),
+                  trailing: order == _sortOrder
+                      ? Icon(Icons.check_rounded,
+                          color: theme.colorScheme.primary)
+                      : null,
+                  onTap: () async {
+                    await _setSortOrder(order);
+                    if (sheetCtx.mounted) Navigator.pop(sheetCtx);
+                  },
+                ),
+              const Divider(height: 1),
+              ListTile(
+                title: Center(
+                  child: Text(
+                    'Cancel',
+                    style: TextStyle(
+                      color: theme.colorScheme.onSurfaceVariant,
+                    ),
+                  ),
+                ),
+                onTap: () => Navigator.pop(sheetCtx),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  String _sortPillLabel(LibrarySortOrder order) => switch (order) {
+        LibrarySortOrder.lastPlayed   => 'Last played',
+        LibrarySortOrder.titleAsc     => 'Title A–Z',
+        LibrarySortOrder.authorAsc    => 'Author A–Z',
+        LibrarySortOrder.dateAdded    => 'Recently added',
+        LibrarySortOrder.durationDesc => 'Longest first',
+      };
+
+  Widget _pill({
+    required String label,
+    required bool selected,
+    required VoidCallback onTap,
+  }) {
+    final cs = Theme.of(context).colorScheme;
+    return Material(
+      color: selected
+          ? cs.primary.withValues(alpha: 0.16)
+          : Colors.transparent,
+      shape: StadiumBorder(
+        side: BorderSide(
+          width: 1.5,
+          color: selected
+              ? cs.primary
+              : cs.outlineVariant,
+        ),
+      ),
+      child: InkWell(
+        customBorder: const StadiumBorder(),
+        onTap: onTap,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+          child: Text(
+            label,
+            style: TextStyle(
+              color: selected ? cs.primary : cs.onSurface,
+              fontWeight: selected ? FontWeight.w600 : FontWeight.w500,
+            ),
+          ),
+        ),
+      ),
     );
   }
 
@@ -955,41 +1194,6 @@ class _LibraryScreenState extends State<LibraryScreen> {
         BookStatus.finished   => 'Finished',
       };
 
-  Widget _filterPillsRow() {
-    final theme = Theme.of(context);
-    return SingleChildScrollView(
-      scrollDirection: Axis.horizontal,
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-      child: Row(
-        children: BookStatus.values.map((status) {
-          final selected = _statusFilter == status;
-          return Padding(
-            padding: const EdgeInsets.only(right: 8),
-            child: FilterChip(
-              label: Text(_statusFilterLabel(status)),
-              selected: selected,
-              onSelected: (_) => setState(() {
-                _statusFilter = selected ? null : status;
-              }),
-              showCheckmark: false,
-              avatar: Icon(
-                switch (status) {
-                  BookStatus.notStarted => Icons.radio_button_unchecked_rounded,
-                  BookStatus.inProgress => Icons.timelapse_rounded,
-                  BookStatus.finished   => Icons.check_circle_rounded,
-                },
-                size: 16,
-                color: selected
-                    ? theme.colorScheme.onSecondaryContainer
-                    : theme.colorScheme.onSurface.withValues(alpha: 0.6),
-              ),
-            ),
-          );
-        }).toList(),
-      ),
-    );
-  }
-
   Widget _grid(List<Audiobook> books) {
     return GridView.builder(
       padding: const EdgeInsets.all(12),
@@ -1004,6 +1208,7 @@ class _LibraryScreenState extends State<LibraryScreen> {
         book: books[i],
         isActive: books[i].path == _activePath && _isPlaying,
         status: _statuses[books[i].path] ?? BookStatus.notStarted,
+        placeholderIndex: i,
         onTap: () => _openPlayer(context, books[i]),
         onLongPress: () => _openDetails(context, books[i]),
       ),
@@ -1019,9 +1224,87 @@ class _LibraryScreenState extends State<LibraryScreen> {
         book: books[i],
         isActive: books[i].path == _activePath && _isPlaying,
         status: _statuses[books[i].path] ?? BookStatus.notStarted,
+        placeholderIndex: i,
         onTap: () => _openPlayer(context, books[i]),
         onDetailsPressed: () => _openDetails(context, books[i]),
       ),
+    );
+  }
+}
+
+// ── Overflow menu ─────────────────────────────────────────────────────────────
+
+class _OverflowMenu extends StatefulWidget {
+  final bool syncing;
+  final VoidCallback onHistory;
+  final VoidCallback? onRescan;
+  final VoidCallback onSettings;
+
+  const _OverflowMenu({
+    required this.syncing,
+    required this.onHistory,
+    required this.onRescan,
+    required this.onSettings,
+  });
+
+  @override
+  State<_OverflowMenu> createState() => _OverflowMenuState();
+}
+
+class _OverflowMenuState extends State<_OverflowMenu> {
+  bool _open = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    return PopupMenuButton<String>(
+      tooltip: 'More',
+      icon: Icon(
+        Icons.more_vert_rounded,
+        color: _open ? cs.primary : null,
+      ),
+      onOpened: () => setState(() => _open = true),
+      onCanceled: () => setState(() => _open = false),
+      onSelected: (value) {
+        setState(() => _open = false);
+        switch (value) {
+          case 'history':  widget.onHistory();  break;
+          case 'rescan':   widget.onRescan?.call(); break;
+          case 'settings': widget.onSettings(); break;
+        }
+      },
+      itemBuilder: (_) => [
+        const PopupMenuItem(
+          value: 'history',
+          child: ListTile(
+            leading: Icon(Icons.history_rounded),
+            title: Text('Listen history'),
+            contentPadding: EdgeInsets.zero,
+          ),
+        ),
+        PopupMenuItem(
+          value: 'rescan',
+          enabled: !widget.syncing,
+          child: ListTile(
+            leading: widget.syncing
+                ? const SizedBox(
+                    width: 20, height: 20,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
+                : const Icon(Icons.refresh_rounded),
+            title: const Text('Rescan library'),
+            contentPadding: EdgeInsets.zero,
+          ),
+        ),
+        const PopupMenuItem(
+          value: 'settings',
+          child: ListTile(
+            leading: Icon(Icons.settings_rounded),
+            title: Text('Settings'),
+            contentPadding: EdgeInsets.zero,
+          ),
+        ),
+      ],
     );
   }
 }
@@ -1082,17 +1365,20 @@ class _MiniPlayer extends StatelessWidget {
                 );
               },
             ),
-            Material(
-              color: theme.colorScheme.surfaceContainerHigh,
-              child: InkWell(
-                onTap: () => Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                      builder: (_) => PlayerScreen(book: book)),
-                ),
-                child: SafeArea(
-                  top: false,
-                  child: Padding(
+            ClipRect(
+              child: BackdropFilter(
+                filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
+                child: Material(
+                  color: theme.colorScheme.surface.withValues(alpha: 0.85),
+                  child: InkWell(
+                    onTap: () => Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                          builder: (_) => PlayerScreen(book: book)),
+                    ),
+                    child: SafeArea(
+                      top: false,
+                      child: Padding(
                   padding: const EdgeInsets.symmetric(
                       horizontal: 12, vertical: 8),
                   child: Row(
@@ -1150,10 +1436,12 @@ class _MiniPlayer extends StatelessWidget {
                       ),
                     ],
                   ),
-                ),
-                ), // SafeArea
-              ),
-            ),
+                    ),
+                    ), // SafeArea
+                  ), // InkWell
+                ), // Material
+              ), // BackdropFilter
+            ), // ClipRect
           ],
         );
       },
