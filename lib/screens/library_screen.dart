@@ -322,7 +322,10 @@ class _LibraryScreenState extends State<LibraryScreen> {
       setState(() => _sortOrder = LibrarySortOrder.fromName(sortName));
     }
     final shouldScan = await prefs.getRefreshOnStartup();
-    if (shouldScan) _scan();
+    // Always load previously discovered books so the library isn't empty on
+    // launch. When refresh-on-startup is off, skip the Drive network sync —
+    // cached Drive books still load from the DB.
+    _scan(syncWithDrive: shouldScan);
   }
 
   /// Called by the scanner as each book is found. Appends it to the visible
@@ -345,7 +348,7 @@ class _LibraryScreenState extends State<LibraryScreen> {
     }
   }
 
-  Future<void> _scan() async {
+  Future<void> _scan({bool syncWithDrive = true}) async {
     _syncFoundPaths = {};
     setState(() {
       _syncing = true;
@@ -371,8 +374,10 @@ class _LibraryScreenState extends State<LibraryScreen> {
               )
             : Future.value(<Audiobook>[]),
         // rescanDrive syncs with Drive when connected; falls back to DB-only
-        // when offline or not configured.
-        locator<DriveLibraryService>().rescanDrive(),
+        // when offline or not configured. loadDriveBooks skips the network.
+        syncWithDrive
+            ? locator<DriveLibraryService>().rescanDrive()
+            : locator<DriveLibraryService>().loadDriveBooks(),
       ]);
       final driveBooks = results[1];
 
