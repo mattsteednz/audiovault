@@ -273,6 +273,5 @@ class PreferencesService {
 
   Future<void> setViewMode(String value) async {
     await (await _sp).setString(_viewModeKey, value);
-unce search)
   }
 }
