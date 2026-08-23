@@ -145,6 +145,93 @@ void main() {
     });
   });
 
+  group('cancel / retry races', () {
+    test('cancelled download is not resurrected by its pending retry',
+        () async {
+      final (:positionService, :repo) = await _makeRepo();
+      const folderId = 'C1';
+      await repo.upsertDriveBook(_book(folderId));
+      await repo.upsertFile(_fileRec(folderId, 0, DriveDownloadState.none));
+
+      final events = <DriveDownloadEvent>[];
+      final manager = DriveDownloadManager(repo, DriveService(),
+          retryDelay: const Duration(milliseconds: 100));
+      manager.downloadEvents.listen(events.add);
+
+      await manager.enqueueAllFiles(folderId);
+      // First attempt fails fast (unsigned DriveService) → retry scheduled.
+      await Future.delayed(const Duration(milliseconds: 50));
+      await manager.cancelDownload(folderId);
+      final downloadsAtCancel = events
+          .where((e) => e.state == DriveDownloadState.downloading)
+          .length;
+
+      // Wait well past the retry window.
+      await Future.delayed(const Duration(milliseconds: 400));
+
+      final downloadsAfterWindow = events
+          .where((e) => e.state == DriveDownloadState.downloading)
+          .length;
+      expect(downloadsAfterWindow, downloadsAtCancel,
+          reason: 'a cancelled job must not resurrect after the retry delay');
+    });
+
+    test('cancelling an idle queue does not forfeit later retries', () async {
+      final (:positionService, :repo) = await _makeRepo();
+      const folderId = 'C2';
+      await repo.upsertDriveBook(_book(folderId));
+      await repo.upsertFile(_fileRec(folderId, 0, DriveDownloadState.none));
+
+      final events = <DriveDownloadEvent>[];
+      final manager = DriveDownloadManager(repo, DriveService(),
+          retryDelay: const Duration(milliseconds: 10));
+      manager.downloadEvents.listen(events.add);
+
+      // First batch: initial attempt + 3 retries = 4 downloading events.
+      await manager.enqueueAllFiles(folderId);
+      await Future.delayed(const Duration(milliseconds: 500));
+      final firstBatch = events
+          .where((e) => e.state == DriveDownloadState.downloading)
+          .length;
+      expect(firstBatch, 4);
+
+      // Queue is idle now — cancelling must clear its flag.
+      await manager.cancelDownload(folderId);
+
+      // Second batch must still get its full retry budget.
+      events.clear();
+      await manager.enqueueAllFiles(folderId);
+      await Future.delayed(const Duration(milliseconds: 500));
+      final secondBatch = events
+          .where((e) => e.state == DriveDownloadState.downloading)
+          .length;
+      expect(secondBatch, 4,
+          reason: 'an idle-queue cancel must not disable future retries');
+    });
+
+    test('failed downloads are retried up to three times', () async {
+      final (:positionService, :repo) = await _makeRepo();
+      const folderId = 'C3';
+      await repo.upsertDriveBook(_book(folderId));
+      await repo.upsertFile(_fileRec(folderId, 0, DriveDownloadState.none));
+
+      final events = <DriveDownloadEvent>[];
+      final manager = DriveDownloadManager(repo, DriveService(),
+          retryDelay: const Duration(milliseconds: 10));
+      manager.downloadEvents.listen(events.add);
+
+      await manager.enqueueAllFiles(folderId);
+      await Future.delayed(const Duration(milliseconds: 500));
+
+      final attempts = events
+          .where((e) => e.state == DriveDownloadState.downloading)
+          .length;
+      expect(attempts, 4, reason: 'initial attempt + 3 retries');
+      final files = await repo.getFilesForBook(folderId);
+      expect(files.single.downloadState, DriveDownloadState.error);
+    });
+  });
+
   group('selectQueuesToStart', () {
     test('returns empty when concurrency is saturated', () {
       final result = selectQueuesToStart(
