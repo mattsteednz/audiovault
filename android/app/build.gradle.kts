@@ -48,24 +48,26 @@ android {
     signingConfigs {
         // We create the release config regardless, but only populate it if we have the data.
         // Supports two modes:
-        //   1. Local dev  — keystore at the hardcoded path + key.properties passwords
+        //   1. Local dev  — keystore via KEYSTORE_PATH env var, or
+        //      <user-home>/.android/keys/kowhai-release.jks fallback
         //   2. CI (GitHub Actions) — KEYSTORE_PATH env var + key.properties generated from secrets
         create("release") {
             val ciKeystorePath = System.getenv("KEYSTORE_PATH")
-            val ksFile = if (!ciKeystorePath.isNullOrEmpty()) {
-                file(ciKeystorePath)
-            } else {
-                file("C:/Users/Matt/.android/keys/kowhai-release.jks")
+            val userHome = System.getProperty("user.home")
+            val ksFile = when {
+                !ciKeystorePath.isNullOrEmpty() -> file(ciKeystorePath)
+                !userHome.isNullOrEmpty() -> file("$userHome/.android/keys/kowhai-release.jks")
+                else -> null
             }
 
-            if (ksFile.exists() && keyProperties.containsKey("storePassword")) {
+            if (ksFile != null && ksFile.exists() && keyProperties.containsKey("storePassword")) {
                 storeFile = ksFile
                 storePassword = keyProperties["storePassword"] as String
                 keyAlias = keyProperties["keyAlias"] as String
                 keyPassword = keyProperties["keyPassword"] as String
                 println("BUILD LOG: Signing configuration applied for Release.")
             } else {
-                println("BUILD LOG: Signing configuration SKIPPED. File exists: ${ksFile.exists()}")
+                println("BUILD LOG: Signing configuration SKIPPED. File exists: ${ksFile != null && ksFile.exists()}")
             }
         }
     }

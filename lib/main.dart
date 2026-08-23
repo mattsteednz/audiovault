@@ -215,7 +215,11 @@ class _AppEntryPointState extends State<_AppEntryPoint> {
 
     // Consent already recorded — apply it and proceed.
     await TelemetryService.applyConsent(consent);
-    if (consent) TelemetryService.enableCrashHandler();
+    if (consent) {
+      TelemetryService.enableCrashHandler();
+    } else {
+      TelemetryService.disableCrashHandler();
+    }
 
     final path = await prefs.getLibraryPath();
     final driveFolder = await prefs.getDriveRootFolder();
@@ -230,7 +234,11 @@ class _AppEntryPointState extends State<_AppEntryPoint> {
     final prefs = locator<PreferencesService>();
     await prefs.setAnalyticsConsent(accepted);
     await TelemetryService.applyConsent(accepted);
-    if (accepted) TelemetryService.enableCrashHandler();
+    if (accepted) {
+      TelemetryService.enableCrashHandler();
+    } else {
+      TelemetryService.disableCrashHandler();
+    }
 
     final path = await prefs.getLibraryPath();
     final driveFolder = await prefs.getDriveRootFolder();

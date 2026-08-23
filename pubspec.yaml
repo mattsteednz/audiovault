@@ -32,7 +32,6 @@ dependencies:
   connectivity_plus: ^6.0.0
   xml: ^6.0.0
   collection: ^1.18.0
-  google_fonts: ^6.2.1
 
 dev_dependencies:
   flutter_test:
@@ -58,6 +57,17 @@ dependency_overrides:
 
 flutter:
   uses-material-design: true
+
+  # Bundled typefaces (SIL OFL, from github.com/google/fonts). Declared here
+  # instead of fetched at runtime by google_fonts — offline-safe first launch,
+  # no unconsented network call, no font swap flash.
+  fonts:
+    - family: Manrope
+      fonts:
+        - asset: assets/fonts/Manrope-VariableFont_wght.ttf
+    - family: Playfair Display
+      fonts:
+        - asset: assets/fonts/PlayfairDisplay-VariableFont_wght.ttf
 
   assets:
     - assets/kowhai-icon-512.png

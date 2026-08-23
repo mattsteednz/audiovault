@@ -36,14 +36,22 @@ class CastServer {
   /// Audio files are available at `<baseUrl>/audio/<index>`.
   /// Cover art (if provided) is at `<baseUrl>/cover`.
   Future<String> start(List<String> audioFiles, {String? coverPath}) async {
+    // Never serve two sessions at once — a leaked prior server would keep
+    // serving stale content under an old token.
+    await stop();
     _files = audioFiles;
     _coverPath = coverPath;
     _sessionToken = _randomToken();
 
     final ip = await _localIp();
+    // Bound to all interfaces: receivers may sit on a different local
+    // subnet/NIC than the one _localIp() picks, and restricting the bind can
+    // silently break delivery. Access control rests on the 128-bit session
+    // token in the URL path.
     _server = await HttpServer.bind(InternetAddress.anyIPv4, 0);
     final port = _server!.port;
-    debugPrint('[CastServer] Serving ${_files.length} file(s) on $ip:$port (token: $_sessionToken)');
+    // Token intentionally NOT logged — it gates access to the user's files.
+    debugPrint('[Kowhai:CastServer] Serving ${_files.length} file(s) on $ip:$port');
 
     _server!.listen(_handleRequest);
     return 'http://$ip:$port';
