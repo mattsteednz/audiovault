@@ -69,13 +69,13 @@ Absorbs old Chunk D (prd-42 / R3). All items verified against source 2026-08-23.
         as future chunk item.
       Implementation guidance + 22-test regression list captured in consult
       transcript; summarized tasks below reflect it.
-- [ ] J1. savePosition preserves explicit status. Preferred shape (confirm vs
+- [x] J1. savePosition preserves explicit status. Preferred shape (confirm vs
       verdict): single rawInsert UPSERT `ON CONFLICT(book_path) DO UPDATE SET`
       position/chapter/global/total/updated_at columns ONLY (never touch
       `status`). Regression tests: (a) save over row w/ status=finished keeps
       finished; (b) save onto row w/o status leaves NULL; (c) periodic-save loop
       does not clobber manual status.
-- [ ] J2. loadBook sequencing fix: detect `isCasting && differentBook` at ENTRY;
+- [x] J2. loadBook sequencing fix: detect `isCasting && differentBook` at ENTRY;
       if so fully stop cast BEFORE mutating `_book`/sources (old sources still
       loaded → stop's position-seek lands correctly). Then proceed with load.
       Additionally defer `_book`/`_artUri` assignment until AFTER
@@ -84,16 +84,16 @@ Absorbs old Chunk D (prd-42 / R3). All items verified against source 2026-08-23.
       snapshot (book+index+pos captured at save time) OR gate persister ticks
       during load via a simple `_loading` flag checked by the readPosition
       closure. Tests: simulate tick during load asserts no cross-book write.
-- [ ] J3. CastController.stop(): never fall back to Duration.zero — cache last
+- [x] J3. CastController.stop(): never fall back to Duration.zero — cache last
       non-zero receiver position from the position stream (field updated in the
       existing listener); final `persister.save()` BEFORE cancelling timer using
       cached value; skip local seek-back entirely if no session/cached value.
       Test w/ fake stream: receiver death mid-session → next pause persists
       cached position, not 0.
-- [ ] J4. KowhaiHandler.stop(): call `_cast.stop()` first when casting (single
+- [x] J4. KowhaiHandler.stop(): call `_cast.stop()` first when casting (single
       teardown path), collapse to ONE persister.save(). Test: stop while casting
       → cast server stopped flag + single save observed (via injected spies).
-- [ ] J5. R3 repair-on-scan (per verdict): add pure
+- [x] J5. R3 repair-on-scan (per verdict): add pure
       `globalToChapterPosition(globalMs, chapterDurations)` inverse helper in
       utils/formatters.dart (+ boundary tests: exact chapter start, mid-chapter,
       beyond total, empty list). Repair hook invoked post-scan/promote for rows
@@ -102,9 +102,9 @@ Absorbs old Chunk D (prd-42 / R3). All items verified against source 2026-08-23.
       v2 (`chapter_index`, `position_ms` fields; importer accepts both v1/v2).
       Regression test end-to-end: export v1-style JSON → import → scan repair →
       getPosition returns mapped chapter+offset.
-- [ ] J6. CHANGELOG entry under [Unreleased] (user-visible: fixed lost Finished
+- [x] J6. CHANGELOG entry under [Unreleased] (user-visible: fixed lost Finished
       status, fixed cast-switch resume bug, restore fidelity).
-- [ ] J7. Gate: analyze --fatal-warnings + flutter test green. Commit(s):
+- [x] J7. Gate: analyze --fatal-warnings + flutter test green. Commit(s):
       `fix(persistence): preserve explicit status across position saves`,
       `fix(player): safe loadBook/re-cast sequencing`, `fix(cast): teardown
       lifecycle + last-known-position`, `feat(backup): chapter-level restore +
@@ -116,3 +116,15 @@ Absorbs old Chunk D (prd-42 / R3). All items verified against source 2026-08-23.
 - Casting book A → load book B while casting → B resumes at B's saved position.
 - Receiver death mid-cast cannot overwrite good progress with 0.
 - Cross-device JSON restore resumes at correct chapter+offset after first scan.
+
+## Implementation notes (2026-08-23)
+- All items implemented per verdict. Test seams added: KowhaiHandler ctor
+  (player/cast params, annotations on the PARAMS so production calls stay
+  clean), handler.persister accessor, FakeCastController implements-style fake.
+- globalToChapterPosition clamps last-chapter overshoot to chapter length so
+  legacy rows near book end cannot seek past EOF and insta-complete.
+- Handler-level regression suite: test/services/audio_handler_lifecycle_test.dart
+  (resume restore, failure keeps previous book, mid-load suppression,
+  stop-before-swap ordering, single-save stop).
+- Receiver-side finish still does not mark finished (local-only completion
+  listener) � logged in master follow-up register for a future chunk.

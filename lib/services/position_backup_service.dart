@@ -63,6 +63,9 @@ class PositionBackupService {
 
   /// Exports all positions to `<audiobooksRoot>/positions.json`.
   /// book_path values are stored relative to [audiobooksRoot].
+  /// Schema v2 adds chapter_index/position_ms so restores keep chapter-level
+  /// fidelity; v1 readers ignore the new keys, and this importer still
+  /// accepts v1 files (repair-on-load heals them — see PositionService).
   Future<void> exportToJson(String audiobooksRoot) async {
     final positions = await locator<PositionService>().getAllPositions();
     final statuses = await locator<PositionService>().getAllStatuses();
@@ -71,6 +74,8 @@ class PositionBackupService {
       final rel = _toRelative(pos.bookPath, audiobooksRoot);
       return {
         'book_path': rel,
+        'chapter_index': pos.chapterIndex,
+        'position_ms': pos.positionMs,
         'global_position_ms': pos.globalPositionMs,
         'total_duration_ms': pos.totalDurationMs,
         'status': statuses[pos.bookPath]?.name ?? 'notStarted',
@@ -79,7 +84,7 @@ class PositionBackupService {
     }).toList();
 
     final json = jsonEncode({
-      'version': 1,
+      'version': 2,
       'exported_at': DateTime.now().millisecondsSinceEpoch,
       'positions': entries,
     });
@@ -121,7 +126,9 @@ class PositionBackupService {
         final updatedAt = entry['updated_at'] as int;
         final globalMs = entry['global_position_ms'] as int;
         final totalMs = entry['total_duration_ms'] as int;
-        final statusStr = entry['status'] as String? ?? 'notStarted';
+        // v2 keys — absent in v1 files, where repair-on-load heals the row.
+        final chapterIndex = entry['chapter_index'] as int? ?? 0;
+        final positionMs = entry['position_ms'] as int? ?? 0;
 
         // Last-write-wins: skip if local row is newer or equal.
         final localUpdatedAt = existingByPath[absPath];
@@ -129,17 +136,26 @@ class PositionBackupService {
 
         await svc.savePosition(
           bookPath: absPath,
-          chapterIndex: 0,
-          position: Duration.zero,
+          chapterIndex: chapterIndex,
+          position: Duration(milliseconds: positionMs),
           globalPositionMs: globalMs,
           totalDurationMs: totalMs,
         );
 
-        final status = BookStatus.values.firstWhere(
-          (s) => s.name == statusStr,
-          orElse: () => BookStatus.notStarted,
-        );
-        await svc.updateBookStatus(absPath, status);
+        // Only persist EXPLICIT non-default statuses. Writing `notStarted`
+        // explicitly would permanently disable derived status for the row
+        // (NULL ⇒ derive is the storage invariant); absent/garbage values
+        // leave status NULL so derivation stays live.
+        final statusStr = entry['status'] as String?;
+        if (statusStr != null) {
+          final status = BookStatus.values.firstWhere(
+            (s) => s.name == statusStr,
+            orElse: () => BookStatus.notStarted,
+          );
+          if (status != BookStatus.notStarted) {
+            await svc.updateBookStatus(absPath, status);
+          }
+        }
         applied++;
       } catch (e) {
         _log('Skipping entry: $e');

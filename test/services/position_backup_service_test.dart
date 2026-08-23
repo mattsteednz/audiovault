@@ -4,6 +4,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:get_it/get_it.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 import 'package:kowhai/services/position_backup_service.dart';
+import 'package:kowhai/models/audiobook.dart';
 import 'package:kowhai/services/position_service.dart';
 import 'package:kowhai/services/preferences_service.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -127,11 +128,133 @@ void main() {
       expect(await file.exists(), isTrue);
 
       final data = jsonDecode(await file.readAsString()) as Map<String, dynamic>;
-      expect(data['version'], 1);
+      expect(data['version'], 2);
       final positions = data['positions'] as List;
       expect(positions.length, 1);
       expect(positions.first['book_path'], 'Author/Book');
       expect(positions.first['global_position_ms'], 30000);
+    });
+
+    test('exportToJson writes chapter-level position (schema v2)', () async {
+      final root = tempDir.path.replaceAll('\\', '/');
+      await svc.savePosition(
+        bookPath: '$root/Author/Book',
+        chapterIndex: 4,
+        position: const Duration(minutes: 3),
+        globalPositionMs: 183000,
+        totalDurationMs: 7200000,
+      );
+
+      final backup = PositionBackupService();
+      await backup.exportToJson(root);
+
+      final data =
+          jsonDecode(await File('${tempDir.path}/positions.json').readAsString())
+              as Map<String, dynamic>;
+      final entry = (data['positions'] as List).single;
+      expect(entry['chapter_index'], 4);
+      expect(entry['position_ms'], const Duration(minutes: 3).inMilliseconds);
+    });
+
+    test('importing a v2 entry restores full chapter fidelity', () async {
+      final root = tempDir.path.replaceAll('\\', '/');
+      final absPath = '$root/Author/Book';
+
+      final json = jsonEncode({
+        'version': 2,
+        'exported_at': 0,
+        'positions': [
+          {
+            'book_path': 'Author/Book',
+            'chapter_index': 7,
+            'position_ms': 153000,
+            'global_position_ms': 60000,
+            'total_duration_ms': 3600000,
+            'status': 'inProgress',
+            'updated_at': 9999999,
+          }
+        ],
+      });
+      await File('${tempDir.path}/positions.json').writeAsString(json);
+
+      final backup = PositionBackupService();
+      await backup.importFromJson(root);
+
+      final saved = await svc.getPosition(absPath);
+      expect(saved!.chapterIndex, 7);
+      expect(saved.position, const Duration(seconds: 153));
+    });
+
+    test('importing a legacy v1 entry leaves a healable zero-position row',
+        () async {
+      final root = tempDir.path.replaceAll('\\', '/');
+      final absPath = '$root/Author/Book';
+
+      final json = jsonEncode({
+        'version': 1,
+        'exported_at': 0,
+        'positions': [
+          {
+            'book_path': 'Author/Book',
+            'global_position_ms': 60000,
+            'total_duration_ms': 3600000,
+            'status': 'inProgress',
+            'updated_at': 9999999,
+          }
+        ],
+      });
+      await File('${tempDir.path}/positions.json').writeAsString(json);
+
+      final backup = PositionBackupService();
+      await backup.importFromJson(root);
+
+      // Legacy shape: global set, chapter-level zero — exactly the signature
+      // PositionService.repairFromGlobal fixes once durations are known.
+      final saved = await svc.getPosition(absPath);
+      expect(saved!.chapterIndex, 0);
+      expect(saved.position, Duration.zero);
+
+      final repaired = await svc.repairFromGlobal(Audiobook(
+        title: 'Book',
+        path: absPath,
+        audioFiles: const [],
+        chapterDurations: const [Duration(minutes: 10), Duration(hours: 1)],
+      ));
+      expect(repaired, isTrue);
+      final healed = await svc.getPosition(absPath);
+      // 60s global sits 60s into the 10-minute first chapter.
+      expect(healed!.chapterIndex, 0);
+      expect(healed.position, const Duration(seconds: 60));
+      expect(await svc.getBookStatus(absPath), BookStatus.inProgress);
+    });
+
+    test('import does not write an explicit notStarted status', () async {
+      final root = tempDir.path.replaceAll('\\', '/');
+      final absPath = '$root/Author/Book';
+
+      final json = jsonEncode({
+        'version': 2,
+        'exported_at': 0,
+        'positions': [
+          {
+            'book_path': 'Author/Book',
+            'global_position_ms': 1800000,
+            'total_duration_ms': 3600000,
+            'updated_at': 9999999,
+          }
+        ],
+      });
+      await File('${tempDir.path}/positions.json').writeAsString(json);
+
+      final backup = PositionBackupService();
+      await backup.importFromJson(root);
+
+      final db = await svc.databaseForTesting;
+      final rows = await db.query('positions',
+          columns: ['status'], where: 'book_path = ?', whereArgs: [absPath]);
+      expect(rows.single['status'], isNull,
+          reason: 'NULL ⇒ derive; explicit notStarted would freeze the status');
+      expect(await svc.getBookStatus(absPath), BookStatus.inProgress);
     });
 
     test('importFromJson applies newer entries', () async {

@@ -13,6 +13,8 @@ Audiobook _book(String title) =>
 
 BookProgress _progress(String path, int updatedAt) => (
       bookPath: path,
+      chapterIndex: 0,
+      positionMs: 0,
       globalPositionMs: 0,
       totalDurationMs: 0,
       updatedAt: updatedAt,

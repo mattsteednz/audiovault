@@ -19,6 +19,10 @@ All notable changes to Kōwhai Audiobook Player are documented here.
 - **Tests** — Retired the intentionally-failing exploration suite; its download-prompt gating coverage now lives in the preservation suite as Property 6. Mocks regenerated against current interfaces and the global analyzer suppression removed.
 
 ### Fixed
+- **Finished status lost on playback** — Books manually marked Finished stayed finished; periodic position saves no longer reset the status you set.
+- **Cross-device restore fidelity** — Synced positions now restore to the exact chapter and offset instead of the start of the book; legacy backups without chapter data are repaired automatically the first time the book is opened.
+- **Cast switching** — Loading a different book while casting now resumes it from its own saved position (previously it could start at the previous book's playback point), and a dying receiver can no longer overwrite good progress with 0:00.
+- **Cast teardown** — Stopping playback during Cast now reliably ends the streaming server and saves the last known receiver position.
 - **Test environment** — A stale shader build cache caused a false-positive failure in the download-prompt preservation suite; resolved by `flutter clean` and guarded against recurrence by pinning CI's Flutter version.
 - **Download cancellation** — Cancelling a download during its between-retries window no longer resurrects the cancelled file, and cancelling an idle queue no longer silently disables retries for that book's next attempt.
 - **Startup recovery** — A single unreadable leftover download file no longer blocks app launch, and files whose expected size was never recorded are no longer deleted during crash recovery.
