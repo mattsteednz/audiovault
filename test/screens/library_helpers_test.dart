@@ -4,7 +4,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:kiri_check/kiri_check.dart';
 import 'package:kowhai/models/audiobook.dart';
 import 'package:kowhai/models/availability_filter_state.dart';
-import 'package:kowhai/screens/library_screen.dart';
+import 'package:kowhai/utils/library_queries.dart';
 import 'package:kowhai/services/position_service.dart';
 import 'package:kowhai/utils/formatters.dart';
 

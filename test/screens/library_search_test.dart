@@ -1,6 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:kowhai/models/audiobook.dart';
-import 'package:kowhai/screens/library_screen.dart';
+import 'package:kowhai/utils/library_queries.dart';
 
 Audiobook _book(String title, {String? author}) => Audiobook(
       title: title,

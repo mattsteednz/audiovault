@@ -1,5 +1,5 @@
 import 'dart:async';
-import 'dart:io' show File, SocketException;
+import 'dart:io' show File;
 import 'package:audio_service/audio_service.dart';
 import 'package:collection/collection.dart';
 import 'package:flutter/material.dart';
@@ -26,223 +26,14 @@ import 'player_screen.dart';
 import 'settings_screen.dart';
 import '../locator.dart';
 import '../services/download_progress_tracker.dart';
-import '../utils/drive_download_sheet.dart';
+import '../utils/library_queries.dart';
+import 'library/drive_scan_overlay.dart';
+import 'library/drive_download_sheet.dart';
+import 'library/library_view_bar.dart';
+import 'library/library_filter_sheet.dart';
+import 'library/library_sort_sheet.dart';
 
 enum _ViewMode { grid, list }
-
-/// Returns books from [books] whose title or author contains [query]
-/// (case-insensitive). Returns [books] unchanged when [query] is empty.
-List<Audiobook> filterBooks(List<Audiobook> books, String query) {
-  if (query.isEmpty) return books;
-  final q = query.toLowerCase();
-  return books.where((b) {
-    if (b.title.toLowerCase().contains(q)) return true;
-    final author = b.author;
-    return author != null && author.toLowerCase().contains(q);
-  }).toList();
-}
-
-/// Merges [cachedCovers] (path → cover file path) into [books].
-///
-/// Only called when enrichment is enabled; pass an empty map to skip.
-/// Books that already have embedded artwork are left unchanged.
-List<Audiobook> applyCachedCovers(
-  List<Audiobook> books,
-  Map<String, String> cachedCovers,
-) {
-  if (cachedCovers.isEmpty) return books;
-  return books.map((b) {
-    if (b.coverImagePath != null || b.coverImageBytes != null) return b;
-    final cached = cachedCovers[b.path];
-    return cached != null ? b.copyWith(coverImagePath: cached) : b;
-  }).toList();
-}
-
-/// Filters [books] to those whose status in [statuses] matches [filter].
-/// When [filter] is null, returns [books] unchanged. Books without an entry in
-/// [statuses] are treated as [BookStatus.notStarted].
-List<Audiobook> applyStatusFilter(
-  List<Audiobook> books,
-  Map<String, BookStatus> statuses,
-  BookStatus? filter,
-) {
-  if (filter == null) return books;
-  return books
-      .where((b) => (statuses[b.path] ?? BookStatus.notStarted) == filter)
-      .toList();
-}
-
-/// Filters [books] by availability.
-///
-/// - [all]             → returns [books] unchanged.
-/// - [availableOffline] → local books + Drive books with non-empty audioFiles.
-/// - [driveOnly]       → Drive books with empty audioFiles only.
-List<Audiobook> applyAvailabilityFilter(
-  List<Audiobook> books,
-  AvailabilityFilterState filter,
-) {
-  return switch (filter) {
-    AvailabilityFilterState.all => books,
-    AvailabilityFilterState.availableOffline => books.where((b) =>
-        b.source == AudiobookSource.local ||
-        (b.source == AudiobookSource.drive && b.audioFiles.isNotEmpty),
-      ).toList(),
-    AvailabilityFilterState.driveOnly => books.where((b) =>
-        b.source == AudiobookSource.drive && b.audioFiles.isEmpty,
-      ).toList(),
-  };
-}
-
-/// Sorts [books] by last-played order: books with a position entry come first
-/// (newest `updatedAt` first), then unplayed books alphabetically by title.
-List<Audiobook> sortByLastPlayed(
-  List<Audiobook> books,
-  List<BookProgress> positions,
-) {
-  final played = <String, int>{
-    for (final p in positions) p.bookPath: p.updatedAt
-  };
-  final withHistory = books.where((b) => played.containsKey(b.path)).toList()
-    ..sort((a, b) => (played[b.path] ?? 0).compareTo(played[a.path] ?? 0));
-  final withoutHistory = books.where((b) => !played.containsKey(b.path)).toList()
-    ..sort((a, b) => a.title.toLowerCase().compareTo(b.title.toLowerCase()));
-  return [...withHistory, ...withoutHistory];
-}
-
-/// User-selectable library sort orders.
-enum LibrarySortOrder {
-  lastPlayed('Last played'),
-  titleAsc('Title (A–Z)'),
-  authorAsc('Author (A–Z)'),
-  dateAdded('Date added'),
-  durationDesc('Duration (longest first)');
-
-  const LibrarySortOrder(this.label);
-  final String label;
-
-  static LibrarySortOrder fromName(String? name) {
-    if (name == null) return LibrarySortOrder.lastPlayed;
-    for (final v in LibrarySortOrder.values) {
-      if (v.name == name) return v;
-    }
-    return LibrarySortOrder.lastPlayed;
-  }
-}
-
-/// Sorts [books] according to [order].
-///
-/// * `lastPlayed` — see [sortByLastPlayed].
-/// * `titleAsc` / `authorAsc` — case-insensitive alphabetical. Books with a
-///   missing author sort after any present author.
-/// * `dateAdded` — newest first by path mtime when available, falling back
-///   to scan order (stable).
-/// * `durationDesc` — longest first; books with unknown duration sort last.
-List<Audiobook> sortBooks(
-  List<Audiobook> books,
-  LibrarySortOrder order, {
-  List<BookProgress> positions = const [],
-  Map<String, int> dateAddedMs = const {},
-}) {
-  final list = [...books];
-  int cmpStr(String a, String b) => a.toLowerCase().compareTo(b.toLowerCase());
-
-  switch (order) {
-    case LibrarySortOrder.lastPlayed:
-      return sortByLastPlayed(list, positions);
-    case LibrarySortOrder.titleAsc:
-      list.sort((a, b) => cmpStr(a.title, b.title));
-      return list;
-    case LibrarySortOrder.authorAsc:
-      list.sort((a, b) {
-        final aa = a.author, ba = b.author;
-        if (aa == null && ba == null) return cmpStr(a.title, b.title);
-        if (aa == null) return 1;
-        if (ba == null) return -1;
-        final c = cmpStr(aa, ba);
-        return c != 0 ? c : cmpStr(a.title, b.title);
-      });
-      return list;
-    case LibrarySortOrder.dateAdded:
-      list.sort((a, b) {
-        final am = dateAddedMs[a.path] ?? 0;
-        final bm = dateAddedMs[b.path] ?? 0;
-        if (am != bm) return bm.compareTo(am); // newest first
-        return cmpStr(a.title, b.title);
-      });
-      return list;
-    case LibrarySortOrder.durationDesc:
-      list.sort((a, b) {
-        final ad = a.duration?.inMilliseconds ?? -1;
-        final bd = b.duration?.inMilliseconds ?? -1;
-        if (ad != bd) return bd.compareTo(ad); // longest first, unknowns last
-        return cmpStr(a.title, b.title);
-      });
-      return list;
-  }
-}
-
-/// Content to show when the library grid is empty, based on what the user
-/// has configured. Pure function consumed by the library empty-state widget.
-///
-/// - `hasLocalFolder` and `hasDriveConfigured` reflect Settings state.
-/// - `showCta` is true when the user has done zero configuration — the empty
-///   state should nudge them into Settings.
-({String title, String message, bool showCta}) emptyStateContent({
-  required bool hasLocalFolder,
-  required bool hasDriveConfigured,
-}) {
-  if (!hasLocalFolder && !hasDriveConfigured) {
-    return (
-      title: 'Your library is empty',
-      message:
-          'Add a folder from your device or connect Google Drive to get started.',
-      showCta: true,
-    );
-  }
-  if (hasDriveConfigured && !hasLocalFolder) {
-    return (
-      title: 'No audiobooks on Drive',
-      message:
-          "We didn't find any audiobooks in the Drive folder you selected. "
-          'Check the folder in Settings or add more books.',
-      showCta: false,
-    );
-  }
-  // Local folder configured (with or without Drive).
-  return (
-    title: 'No audiobooks found',
-    message: 'Make sure your library folder contains subfolders with audio '
-        'files, then pull to refresh.',
-    showCta: false,
-  );
-}
-
-/// Maps a scan-time exception to a user-friendly error message.
-/// Permission issues, missing folders, and generic failures each get a
-/// distinct phrasing that suggests a next action.
-String friendlyScanError(Object error) {
-  final s = error.toString().toLowerCase();
-  if (s.contains('permission denied') ||
-      s.contains('operation not permitted') ||
-      s.contains('errno = 13') ||
-      s.contains('errno = 1,')) {
-    return 'Storage access denied. Grant permission in Settings and try again.';
-  }
-  if (s.contains('no such file') ||
-      s.contains('cannot find the file') ||
-      s.contains('cannot find the path') ||
-      s.contains('errno = 2') ||
-      s.contains('errno = 3,')) {
-    return "Library folder can't be found. It may have been moved or deleted — "
-        'choose a new folder in Settings.';
-  }
-  if (error is SocketException ||
-      s.contains('network') ||
-      s.contains('connection')) {
-    return "Couldn't reach Google Drive. Check your network and try again.";
-  }
-  return "Couldn't scan the library. Try again, or check your folder in Settings.";
-}
 
 class LibraryScreen extends StatefulWidget {
   /// When true, forces a Drive sync on first load regardless of the
@@ -852,7 +643,7 @@ Future<void> _refreshDriveBook(String folderId) async {
 
     if (allBooks.isEmpty) {
       if (_syncing) {
-        return _DriveScanOverlay(status: _scanStatus);
+        return DriveScanOverlay(status: _scanStatus);
       }
       final content = emptyStateContent(
         hasLocalFolder: _hasLocalFolder,
@@ -935,379 +726,38 @@ Future<void> _refreshDriveBook(String folderId) async {
   // ── View bar (pinned, below search) ─────────────────────────────────────────
 
   Widget _viewBar(int count) {
-    final theme = Theme.of(context);
-    final cs = theme.colorScheme;
-    final hasStatus = _statusFilter != null;
-    final hasAvailability = _availabilityFilter != AvailabilityFilterState.all;
-    final hasSort = _sortOrder != LibrarySortOrder.lastPlayed;
-
-    final summaryParts = <String>[];
-    if (hasStatus) summaryParts.add(_statusFilterLabel(_statusFilter!));
-    if (hasAvailability) summaryParts.add(_availabilityFilter.label);
-    if (hasSort) summaryParts.add(_sortOrder.label);
-    final summary = summaryParts.isEmpty
-        ? null
-        : ' · ${summaryParts.join(' · ')}';
-
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(12, 4, 8, 4),
-      child: Row(
-        children: [
-          IconButton(
-            icon: Icon(_viewMode == _ViewMode.grid
-                ? Icons.view_list_rounded
-                : Icons.grid_view_rounded),
-            onPressed: _toggleViewMode,
-            tooltip:
-                _viewMode == _ViewMode.grid ? 'Switch to list view' : 'Switch to grid view',
-            visualDensity: VisualDensity.compact,
-          ),
-          const SizedBox(width: 4),
-          Expanded(
-            child: Text.rich(
-              TextSpan(
-                children: [
-                  TextSpan(
-                    text: count == 1 ? '1 book' : '$count books',
-                    style: theme.textTheme.bodyMedium?.copyWith(
-                      color: cs.onSurface.withValues(alpha: 0.8),
-                    ),
-                  ),
-                  if (summary != null)
-                    TextSpan(
-                      text: summary,
-                      style: theme.textTheme.bodyMedium?.copyWith(
-                        color: cs.primary,
-                      ),
-                    ),
-                ],
-              ),
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-            ),
-          ),
-          _viewBarButton(
-            icon: Icons.tune_rounded,
-            active: hasStatus || hasAvailability,
-            tooltip: 'Filter',
-            onPressed: _openFilterSheet,
-          ),
-          const SizedBox(width: 4),
-          _viewBarButton(
-            icon: Icons.sort_rounded,
-            active: hasSort,
-            tooltip: 'Sort',
-            onPressed: _openSortSheet,
-          ),
-        ],
-      ),
+    return LibraryViewBar(
+      count: count,
+      isGridView: _viewMode == _ViewMode.grid,
+      onToggleViewMode: _toggleViewMode,
+      statusFilter: _statusFilter,
+      availabilityFilter: _availabilityFilter,
+      sortOrder: _sortOrder,
+      statusLabel: _statusFilterLabel,
+      onOpenFilter: _openFilterSheet,
+      onOpenSort: _openSortSheet,
     );
   }
-
-  Widget _viewBarButton({
-    required IconData icon,
-    required bool active,
-    required String tooltip,
-    required VoidCallback onPressed,
-  }) {
-    final cs = Theme.of(context).colorScheme;
-    return Material(
-      color: active
-          ? cs.primary.withValues(alpha: 0.14)
-          : Colors.transparent,
-      shape: const CircleBorder(),
-      child: IconButton(
-        icon: Icon(
-          icon,
-          color: active ? cs.primary : cs.onSurface.withValues(alpha: 0.75),
-        ),
-        tooltip: tooltip,
-        onPressed: onPressed,
-      ),
-    );
-  }
-
-  // ── Filter + Sort sheets ────────────────────────────────────────────────────
 
   Future<void> _openFilterSheet() async {
-    // Compute counts based on search-filtered books (ignoring status filter).
     final searchFiltered = filterBooks(_books ?? [], _searchQuery);
-    final allCount = searchFiltered.length;
-    final statusCounts = <BookStatus, int>{};
-    for (final s in BookStatus.values) {
-      statusCounts[s] = applyStatusFilter(searchFiltered, _statuses, s).length;
-    }
-
-    // Availability pill counts (based on same search-filtered base).
-    final availCounts = <AvailabilityFilterState, int>{};
-    for (final s in AvailabilityFilterState.values) {
-      availCounts[s] = applyAvailabilityFilter(searchFiltered, s).length;
-    }
-
-    final driveConnected = locator<DriveService>().currentAccount != null;
-    final hasDriveBooks = _driveBooks.isNotEmpty;
-
-    await showModalBottomSheet<void>(
-      context: context,
-      isScrollControlled: true,
-      builder: (_) => StatefulBuilder(
-        builder: (sheetCtx, setSheetState) {
-          final theme = Theme.of(sheetCtx);
-          final maxHeight = MediaQuery.of(sheetCtx).size.height * 0.75;
-
-          // Whether "Clear all" should be enabled.
-          final canClear = _statusFilter != null ||
-              _availabilityFilter != AvailabilityFilterState.all;
-
-          return SafeArea(
-            child: ConstrainedBox(
-              constraints: BoxConstraints(maxHeight: maxHeight),
-              child: SingleChildScrollView(
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Center(
-                      child: Padding(
-                        padding: const EdgeInsets.symmetric(vertical: 12),
-                        child: Container(
-                          width: 40,
-                          height: 4,
-                          decoration: BoxDecoration(
-                            color: theme.colorScheme.outlineVariant,
-                            borderRadius: BorderRadius.circular(2),
-                          ),
-                        ),
-                      ),
-                    ),
-                    Padding(
-                      padding: const EdgeInsets.fromLTRB(20, 0, 20, 16),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Text('Filter', style: theme.textTheme.titleMedium),
-                          const SizedBox(height: 16),
-                          Text(
-                            'PROGRESS',
-                            style: theme.textTheme.labelSmall?.copyWith(
-                              letterSpacing: 1.2,
-                              color: theme.colorScheme.onSurfaceVariant,
-                            ),
-                          ),
-                          const SizedBox(height: 10),
-                          Wrap(
-                            spacing: 8,
-                            runSpacing: 8,
-                            children: [
-                              _pill(
-                                label: 'All ($allCount)',
-                                selected: _statusFilter == null,
-                                onTap: () {
-                                  setState(() => _statusFilter = null);
-                                  locator<PreferencesService>()
-                                      .setStatusFilter(null);
-                                  setSheetState(() {});
-                                },
-                              ),
-                              for (final s in BookStatus.values)
-                                _pill(
-                                  label: '${_statusFilterLabel(s)} (${statusCounts[s] ?? 0})',
-                                  selected: _statusFilter == s,
-                                  onTap: () {
-                                    setState(() => _statusFilter = s);
-                                    locator<PreferencesService>()
-                                        .setStatusFilter(s);
-                                    setSheetState(() {});
-                                  },
-                                ),
-                            ],
-                          ),
-                          // ── AVAILABILITY section (Drive-connected only) ──
-                          if (driveConnected) ...[
-                            const SizedBox(height: 20),
-                            Text(
-                              'AVAILABILITY',
-                              style: theme.textTheme.labelSmall?.copyWith(
-                                letterSpacing: 1.2,
-                                color: theme.colorScheme.onSurfaceVariant,
-                              ),
-                            ),
-                            const SizedBox(height: 10),
-                            Wrap(
-                              spacing: 8,
-                              runSpacing: 8,
-                              children: [
-                                _pill(
-                                  label: 'All (${availCounts[AvailabilityFilterState.all] ?? 0})',
-                                  selected: _availabilityFilter == AvailabilityFilterState.all,
-                                  onTap: () {
-                                    setState(() {
-                                      _availabilityFilter = AvailabilityFilterState.all;
-                                    });
-                                    locator<PreferencesService>()
-                                        .setAvailabilityFilter(AvailabilityFilterState.all);
-                                    setSheetState(() {});
-                                  },
-                                ),
-                                if (hasDriveBooks) ...[
-                                  _pill(
-                                    label: 'Available offline (${availCounts[AvailabilityFilterState.availableOffline] ?? 0})',
-                                    selected: _availabilityFilter == AvailabilityFilterState.availableOffline,
-                                    onTap: () {
-                                      setState(() {
-                                        _availabilityFilter = AvailabilityFilterState.availableOffline;
-                                      });
-                                      locator<PreferencesService>()
-                                          .setAvailabilityFilter(AvailabilityFilterState.availableOffline);
-                                      setSheetState(() {});
-                                    },
-                                  ),
-                                  _pill(
-                                    label: 'Drive only (${availCounts[AvailabilityFilterState.driveOnly] ?? 0})',
-                                    selected: _availabilityFilter == AvailabilityFilterState.driveOnly,
-                                    onTap: () {
-                                      setState(() {
-                                        _availabilityFilter = AvailabilityFilterState.driveOnly;
-                                      });
-                                      locator<PreferencesService>()
-                                          .setAvailabilityFilter(AvailabilityFilterState.driveOnly);
-                                      setSheetState(() {});
-                                    },
-                                  ),
-                                ],
-                              ],
-                            ),
-                          ],
-                          const SizedBox(height: 20),
-                          TextButton.icon(
-                            icon: const Icon(Icons.filter_alt_off_rounded),
-                            label: const Text('Clear all'),
-                            onPressed: canClear
-                                ? () {
-                                    setState(() {
-                                      _statusFilter = null;
-                                      _availabilityFilter = AvailabilityFilterState.all;
-                                    });
-                                    final prefs = locator<PreferencesService>();
-                                    prefs.setStatusFilter(null);
-                                    prefs.setAvailabilityFilter(AvailabilityFilterState.all);
-                                    setSheetState(() {});
-                                  }
-                                : null,
-                          ),
-                        ],
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-          );
-        },
-      ),
+    await showLibraryFilterSheet(
+      context,
+      searchFilteredBooks: searchFiltered,
+      statuses: _statuses,
+      statusFilter: _statusFilter,
+      availabilityFilter: _availabilityFilter,
+      hasDriveBooks: _driveBooks.isNotEmpty,
+      onStatusChanged: (s) => setState(() => _statusFilter = s),
+      onAvailabilityChanged: (s) => setState(() => _availabilityFilter = s),
     );
   }
 
   Future<void> _openSortSheet() async {
-    await showModalBottomSheet<void>(
-      context: context,
-      isScrollControlled: true,
-      builder: (sheetCtx) {
-        final theme = Theme.of(sheetCtx);
-        final maxHeight = MediaQuery.of(sheetCtx).size.height * 0.75;
-        return SafeArea(
-          child: ConstrainedBox(
-            constraints: BoxConstraints(maxHeight: maxHeight),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                Center(
-                  child: Padding(
-                    padding: const EdgeInsets.symmetric(vertical: 12),
-                    child: Container(
-                      width: 40,
-                      height: 4,
-                      decoration: BoxDecoration(
-                        color: theme.colorScheme.outlineVariant,
-                        borderRadius: BorderRadius.circular(2),
-                      ),
-                    ),
-                  ),
-                ),
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(20, 0, 20, 8),
-                  child: Text('Sort by', style: theme.textTheme.titleMedium),
-                ),
-                Flexible(
-                  child: ListView(
-                    shrinkWrap: true,
-                    children: [
-                      for (final order in LibrarySortOrder.values)
-                        ListTile(
-                          title: Text(_sortPillLabel(order)),
-                          trailing: order == _sortOrder
-                              ? Icon(Icons.check_rounded,
-                                  color: theme.colorScheme.primary)
-                              : null,
-                          onTap: () async {
-                            await _setSortOrder(order);
-                            if (sheetCtx.mounted) Navigator.pop(sheetCtx);
-                          },
-                        ),
-                      const SizedBox(height: 8),
-                    ],
-                  ),
-                ),
-              ],
-            ),
-          ),
-        );
-      },
-    );
-  }
-
-  String _sortPillLabel(LibrarySortOrder order) => switch (order) {
-        LibrarySortOrder.lastPlayed   => 'Last played',
-        LibrarySortOrder.titleAsc     => 'Title A–Z',
-        LibrarySortOrder.authorAsc    => 'Author A–Z',
-        LibrarySortOrder.dateAdded    => 'Recently added',
-        LibrarySortOrder.durationDesc => 'Longest first',
-      };
-
-  Widget _pill({
-    required String label,
-    required bool selected,
-    required VoidCallback onTap,
-  }) {
-    final cs = Theme.of(context).colorScheme;
-    return Material(
-      color: selected
-          ? cs.primary.withValues(alpha: 0.16)
-          : Colors.transparent,
-      shape: StadiumBorder(
-        side: BorderSide(
-          width: 1.5,
-          color: selected
-              ? cs.primary
-              : cs.outlineVariant,
-        ),
-      ),
-      child: InkWell(
-        customBorder: const StadiumBorder(),
-        onTap: onTap,
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-          child: Text(
-            label,
-            style: TextStyle(
-              color: selected ? cs.primary : cs.onSurface,
-              fontWeight: selected ? FontWeight.w600 : FontWeight.w500,
-            ),
-          ),
-        ),
-      ),
+    await showLibrarySortSheet(
+      context,
+      current: _sortOrder,
+      onOrderSelected: _setSortOrder,
     );
   }
 
@@ -1317,28 +767,11 @@ Future<void> _refreshDriveBook(String folderId) async {
     final hasAvailability = _availabilityFilter != AvailabilityFilterState.all;
     final hasAnyFilter = hasStatus || hasAvailability;
 
-    final String message;
-    if (hasSearch && hasStatus && hasAvailability) {
-      message =
-          'No ${_statusFilterLabel(_statusFilter!).toLowerCase()} '
-          '${_availabilityFilter.label.toLowerCase()} books match "$_searchQuery".';
-    } else if (hasSearch && hasStatus) {
-      message =
-          'No ${_statusFilterLabel(_statusFilter!).toLowerCase()} books match "$_searchQuery".';
-    } else if (hasSearch && hasAvailability) {
-      message =
-          'No ${_availabilityFilter.label.toLowerCase()} books match "$_searchQuery".';
-    } else if (hasStatus && hasAvailability) {
-      message =
-          'No ${_statusFilterLabel(_statusFilter!).toLowerCase()} '
-          '${_availabilityFilter.label.toLowerCase()} books.';
-    } else if (hasStatus) {
-      message = 'No ${_statusFilterLabel(_statusFilter!).toLowerCase()} books.';
-    } else if (hasAvailability) {
-      message = 'No ${_availabilityFilter.label.toLowerCase()} books.';
-    } else {
-      message = 'No results for "$_searchQuery".';
-    }
+    final message = noMatchesMessage(
+        searchQuery: _searchQuery,
+        statusFilter: _statusFilter,
+        availabilityFilter: _availabilityFilter,
+        statusLabel: _statusFilterLabel);
     return Center(
       child: Padding(
         padding: const EdgeInsets.all(32),
@@ -1479,144 +912,6 @@ Future<void> _refreshDriveBook(String folderId) async {
                 : null,
           );
         },
-      ),
-    );
-  }
-}
-
-/// Animated overlay shown while the Drive library is being scanned for the
-/// first time. Designed to feel alive during what would otherwise be a blank
-/// wait — especially during onboarding.
-///
-/// Features:
-/// - Pulsing headphones icon (scale + opacity loop)
-/// - Status text that cross-fades between phases
-/// - A rotating audiobook tip that changes every few seconds
-class _DriveScanOverlay extends StatefulWidget {
-  final String status;
-
-  const _DriveScanOverlay({required this.status});
-
-  @override
-  State<_DriveScanOverlay> createState() => _DriveScanOverlayState();
-}
-
-class _DriveScanOverlayState extends State<_DriveScanOverlay>
-    with TickerProviderStateMixin {
-  late final AnimationController _pulseController;
-  late final Animation<double> _pulseScale;
-  late final Animation<double> _pulseOpacity;
-
-  late final AnimationController _tipController;
-  int _tipIndex = 0;
-
-  static const _tips = [
-    'Tip: Tap the chapter label in the player to jump to any chapter.',
-    'Tip: Set the sleep timer to stop at the end of a chapter.',
-    'Tip: Add bookmarks while listening to save your favourite moments.',
-    'Tip: Your listening position syncs across devices via Drive.',
-    'Tip: Use the sort menu to find your next listen by author.',
-    'Tip: Download a book to listen without an internet connection.',
-  ];
-
-  @override
-  void initState() {
-    super.initState();
-
-    _pulseController = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 1400),
-    )..repeat(reverse: true);
-
-    _pulseScale = Tween<double>(begin: 0.92, end: 1.08).animate(
-      CurvedAnimation(parent: _pulseController, curve: Curves.easeInOut),
-    );
-    _pulseOpacity = Tween<double>(begin: 0.65, end: 1.0).animate(
-      CurvedAnimation(parent: _pulseController, curve: Curves.easeInOut),
-    );
-
-    _tipController = AnimationController(
-      vsync: this,
-      duration: const Duration(seconds: 4),
-    )..addStatusListener((status) {
-        if (status == AnimationStatus.completed) {
-          setState(() {
-            _tipIndex = (_tipIndex + 1) % _tips.length;
-          });
-          _tipController.forward(from: 0);
-        }
-      });
-    _tipController.forward();
-  }
-
-  @override
-  void dispose() {
-    _pulseController.dispose();
-    _tipController.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
-
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 40),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            // Pulsing icon
-            AnimatedBuilder(
-              animation: _pulseController,
-              builder: (_, __) => Opacity(
-                opacity: _pulseOpacity.value,
-                child: Transform.scale(
-                  scale: _pulseScale.value,
-                  child: Icon(
-                    Icons.headphones_rounded,
-                    size: 64,
-                    color: cs.primary,
-                  ),
-                ),
-              ),
-            ),
-            const SizedBox(height: 28),
-
-            // Cross-fading status text
-            AnimatedSwitcher(
-              duration: const Duration(milliseconds: 400),
-              transitionBuilder: (child, animation) => FadeTransition(
-                opacity: animation,
-                child: child,
-              ),
-              child: Text(
-                widget.status,
-                key: ValueKey(widget.status),
-                style: Theme.of(context).textTheme.bodyLarge,
-                textAlign: TextAlign.center,
-              ),
-            ),
-            const SizedBox(height: 40),
-
-            // Rotating tip
-            AnimatedSwitcher(
-              duration: const Duration(milliseconds: 500),
-              transitionBuilder: (child, animation) => FadeTransition(
-                opacity: animation,
-                child: child,
-              ),
-              child: Text(
-                _tips[_tipIndex],
-                key: ValueKey(_tipIndex),
-                style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                      color: cs.onSurface.withValues(alpha: 0.5),
-                    ),
-                textAlign: TextAlign.center,
-              ),
-            ),
-          ],
-        ),
       ),
     );
   }
