@@ -20,6 +20,12 @@ All notable changes to Kōwhai Audiobook Player are documented here.
 
 ### Fixed
 - **Test environment** — A stale shader build cache caused a false-positive failure in the download-prompt preservation suite; resolved by `flutter clean` and guarded against recurrence by pinning CI's Flutter version.
+- **Download cancellation** — Cancelling a download during its between-retries window no longer resurrects the cancelled file, and cancelling an idle queue no longer silently disables retries for that book's next attempt.
+- **Startup recovery** — A single unreadable leftover download file no longer blocks app launch, and files whose expected size was never recorded are no longer deleted during crash recovery.
+- **Drive folder names** — Folder and file names coming from Google Drive are sanitised before being used as filesystem paths, so names containing `/`, `\`, or traversal segments can no longer escape the library folder (they also no longer break scanning or downloads).
+- **Scan errors** — An unreadable library root is now logged and rethrown so the UI can show its retryable error message consistently.
+- **M4B chapters** — Chapters stored under the standard `meta` FullBox header (common in iTunes-style files) are now found; out-of-order chapter tables are sorted chronologically, and chapter lookup is now a binary search.
+- **OPF metadata** — `metadata.opf` files that declare Dublin Core as the default namespace (no `dc:` prefixes) now parse instead of silently yielding empty metadata.
 
 ---
 
