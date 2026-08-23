@@ -1,6 +1,6 @@
 # prd-39 — Chunk A: Quality Gate Restoration (R1, R2, R4)
 
-Status: [ ] not started / [x] done
+Status: [x] DONE (branch fix/quality-gate; A1=stale shader cache confirmed via flutter clean; A2=Bug B ported as preservation Property 6; A3=pinned 3.44.4+cache both workflows; A4=mocks regen, suppression removed)
 Branch: `fix/quality-gate`
 
 ## Problem
