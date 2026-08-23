@@ -1,12 +1,12 @@
 import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:flutter/material.dart';
 
-import '../locator.dart';
-import '../models/audiobook.dart';
-import '../services/drive_download_manager.dart';
-import '../services/download_progress_tracker.dart';
-import '../services/drive_library_service.dart';
-import '../utils/formatters.dart';
+import '../../locator.dart';
+import '../../models/audiobook.dart';
+import '../../services/drive_download_manager.dart';
+import '../../services/download_progress_tracker.dart';
+import '../../services/drive_library_service.dart';
+import '../../utils/formatters.dart';
 
 /// Shows a bottom sheet prompting the user to download a Drive book.
 ///
