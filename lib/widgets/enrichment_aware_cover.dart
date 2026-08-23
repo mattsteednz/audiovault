@@ -11,11 +11,15 @@ class EnrichmentAwareCover extends StatelessWidget {
   final double iconSize;
   final CoverPlaceholderStyle placeholderStyle;
 
+  /// Decode target (logical px) forwarded to [BookCover]; see its doc.
+  final double decodeSize;
+
   const EnrichmentAwareCover({
     super.key,
     required this.book,
     required this.iconSize,
     this.placeholderStyle = CoverPlaceholderStyle.title,
+    this.decodeSize = 256,
   });
 
   @override
@@ -26,6 +30,7 @@ class EnrichmentAwareCover extends StatelessWidget {
         book: book,
         iconSize: iconSize,
         placeholderStyle: placeholderStyle,
+        decodeSize: decodeSize,
       );
     }
     final service = locator<EnrichmentService>();
@@ -41,6 +46,7 @@ class EnrichmentAwareCover extends StatelessWidget {
               isEnriching: enriching.contains(book.path),
               enrichmentFailed: failed.contains(book.path),
               placeholderStyle: placeholderStyle,
+              decodeSize: decodeSize,
             );
           },
         );

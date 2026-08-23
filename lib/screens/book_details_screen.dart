@@ -59,7 +59,7 @@ class _CoverBackground extends StatelessWidget {
     return Stack(
       fit: StackFit.expand,
       children: [
-        BookCover(book: book, iconSize: 80),
+        BookCover(book: book, iconSize: 80, decodeSize: 1024),
         // Gradient fade at bottom so AppBar back button stays legible
         Positioned.fill(
           child: DecoratedBox(
