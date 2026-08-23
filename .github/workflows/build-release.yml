@@ -46,7 +46,9 @@ jobs:
       - name: Build release APK
         env:
           KEYSTORE_PATH: ${{ runner.temp }}/kowhai-release.jks
-        run: flutter build apk --release
+        # run_number gives a monotonically increasing Android buildNumber so
+        # sideload updates always install over previous releases.
+        run: flutter build apk --release --build-number=${{ github.run_number }}
 
       - name: Extract version from tag
         id: version

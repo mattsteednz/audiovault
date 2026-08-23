@@ -2,6 +2,18 @@
 
 All notable changes to Kōwhai Audiobook Player are documented here.
 
+## [Unreleased]
+
+### Changed
+- **CI** — Flutter version pinned (3.44.4) with pub caching in both workflows, ending local/CI SDK drift; release APK builds now use the workflow run number as the Android build number so sideload updates always upgrade cleanly.
+- **Repo hygiene** — Removed the stale `assets/lib` app copy and duplicate `.analysis_options.yaml`; unified leftover "AudioVault"/`sbcover` naming to Kōwhai (`KowhaiApp`, `[Kowhai:*]` log tags); added MIT `LICENSE` file.
+- **Tests** — Retired the intentionally-failing exploration suite; its download-prompt gating coverage now lives in the preservation suite as Property 6. Mocks regenerated against current interfaces and the global analyzer suppression removed.
+
+### Fixed
+- **Test environment** — A stale shader build cache caused a false-positive failure in the download-prompt preservation suite; resolved by `flutter clean` and guarded against recurrence by pinning CI's Flutter version.
+
+---
+
 ## [2.0.0] — 2026-04-28
 
 ### Added
