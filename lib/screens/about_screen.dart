@@ -176,10 +176,10 @@ class _AboutScreenState extends State<AboutScreen> {
           ListTile(
             leading: const Icon(Icons.code_rounded),
             title: const Text('Source code'),
-            subtitle: const Text('github.com/mattsteednz/kowhai'),
+            subtitle: const Text('github.com/masterslueth/kowhai'),
             trailing: const Icon(Icons.open_in_new, size: 18),
             onTap: () =>
-                _open('https://github.com/mattsteednz/kowhai'),
+                _open('https://github.com/masterslueth/kowhai'),
             contentPadding:
                 const EdgeInsets.symmetric(horizontal: 20, vertical: 4),
           ),
@@ -189,7 +189,7 @@ class _AboutScreenState extends State<AboutScreen> {
             subtitle: Text(
               _latestRelease != null
                   ? 'v${_latestRelease!.version} on GitHub'
-                  : 'github.com/mattsteednz/kowhai/releases',
+                  : 'github.com/masterslueth/kowhai/releases',
             ),
             trailing: const Icon(Icons.open_in_new, size: 18),
             onTap: () => _open(
