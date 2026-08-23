@@ -1,6 +1,7 @@
 import 'dart:io';
 import 'dart:isolate';
-import 'package:audio_metadata_reader/audio_metadata_reader.dart';
+import 'package:audio_metadata_reader/audio_metadata_reader.dart'
+    hide Chapter;
 import 'package:flutter/foundation.dart';
 import 'package:path/path.dart' as p;
 import '../models/audiobook.dart';

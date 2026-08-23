@@ -48,10 +48,10 @@ dev_dependencies:
 
 # path_provider_android 2.3.x depends on jni/jni_flutter which require NDK to
 # compile libdartjni.so. Without NDK configured, the .so is absent from the APK
-# and the app crashes at runtime. Pin to the last pre-JNI version until we set
-# up NDK or path_provider_android drops the JNI dependency.
-# TODO: Revisit this pin periodically — check if path_provider_android ≥2.3
-#       has dropped the JNI/NDK requirement, or configure NDK in the project.
+# and the app crashes AT RUNTIME even though builds succeed — so a green
+# `flutter build apk` does NOT clear this pin (architect-reviewed 2026-08-23).
+# Unpin only when upstream drops the JNI/NDK requirement OR NDK is configured
+# AND the built APK has been install-tested on a device/emulator.
 dependency_overrides:
   path_provider_android: 2.2.23
 
