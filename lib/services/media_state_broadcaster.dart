@@ -1,7 +1,7 @@
 import 'package:audio_service/audio_service.dart';
 import '../models/audiobook.dart';
 
-/// Owns the mapping between AudioVault's internal state and the
+/// Owns the mapping between Kōwhai's internal state and the
 /// `audio_service` notification streams (`playbackState` + `mediaItem`).
 ///
 /// The broadcaster does NOT hold a reference to the handler itself — the

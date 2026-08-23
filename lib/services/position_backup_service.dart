@@ -16,7 +16,7 @@ import '../models/audiobook.dart';
 ///   change, and immediately on app background.
 ///
 /// Layer 2 — Drive sync (opt-in):
-///   Uploads the local JSON to `AudioVault/positions.json` in the user's
+///   Uploads the local JSON to `Kowhai/positions.json` in the user's
 ///   chosen Drive backup folder. Debounced to at most once every 5 minutes
 ///   while playing; fires immediately on app background.
 class PositionBackupService {

@@ -1,7 +1,7 @@
 import 'dart:convert';
 import 'package:http/http.dart' as http;
 
-/// Fetches the latest release from the AudioVault GitHub repo.
+/// Fetches the latest release from the Kōwhai GitHub repo.
 class GithubReleaseService {
   static const _owner = 'mattsteednz';
   static const _repo = 'kowhai';

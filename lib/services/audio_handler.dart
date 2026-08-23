@@ -189,7 +189,7 @@ class KowhaiHandler extends BaseAudioHandler {
     } else if (book.coverImageBytes != null) {
       try {
         final tmp = await getTemporaryDirectory();
-        final f = File('${tmp.path}/sbcover_${book.path.hashCode.abs()}.jpg');
+        final f = File('${tmp.path}/kowhai_cover_${book.path.hashCode.abs()}.jpg');
         if (!await f.exists()) await f.writeAsBytes(book.coverImageBytes!);
         _artUri = f.uri;
       } catch (_) {}
