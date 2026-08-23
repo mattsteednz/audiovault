@@ -1,4 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
+import 'package:just_audio/just_audio.dart';
 import 'package:mockito/annotations.dart';
 import 'package:mockito/mockito.dart';
 import 'package:kowhai/locator.dart';
@@ -7,7 +8,7 @@ import 'package:kowhai/services/position_service.dart';
 import 'package:kowhai/services/preferences_service.dart';
 import 'audio_handler_test.mocks.dart';
 
-@GenerateMocks([PositionService, PreferencesService])
+@GenerateMocks([PositionService, PreferencesService, AudioPlayer])
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 

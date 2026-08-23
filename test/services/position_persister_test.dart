@@ -48,6 +48,85 @@ void main() {
     sqfliteFfiInit();
   });
 
+  group('globalToChapterPosition', () {
+    test('returns zero chapter/offset for zero or negative input', () {
+      expect(globalToChapterPosition(0, [const Duration(minutes: 10)]),
+          (chapterIndex: 0, position: Duration.zero));
+      expect(globalToChapterPosition(-5, [const Duration(minutes: 10)]),
+          (chapterIndex: 0, position: Duration.zero));
+    });
+
+    test('handles an empty duration list by parking everything on chapter 0',
+        () {
+      final r = globalToChapterPosition(90000, const []);
+      expect(r.chapterIndex, 0);
+      expect(r.position.inMilliseconds, 90000);
+    });
+
+    test('maps mid-chapter offsets', () {
+      final r = globalToChapterPosition(
+        15 * 60 * 1000 + 30 * 1000,
+        [
+          const Duration(minutes: 10),
+          const Duration(minutes: 20),
+          const Duration(minutes: 30),
+        ],
+      );
+      // 10 min consumed by ch0 → 5m30s into ch1.
+      expect(r.chapterIndex, 1);
+      expect(r.position, const Duration(minutes: 5, seconds: 30));
+    });
+
+    test('exact chapter boundary rolls to the next chapter start', () {
+      final r = globalToChapterPosition(
+        10 * 60 * 1000, // exactly the end of chapter 0
+        [
+          const Duration(minutes: 10),
+          const Duration(minutes: 20),
+        ],
+      );
+      expect(r.chapterIndex, 1);
+      expect(r.position, Duration.zero);
+    });
+
+    test('overshoot clamps to the end of the last chapter', () {
+      final r = globalToChapterPosition(
+        999 * 60 * 1000,
+        [
+          const Duration(minutes: 10),
+          const Duration(minutes: 20),
+        ],
+      );
+      expect(r.chapterIndex, 1);
+      expect(r.position, const Duration(minutes: 20),
+          reason: 'must never exceed the chapter duration');
+    });
+
+    test('round-trips with calculateGlobalPosition for sampled inputs', () {
+      const durations = [
+        Duration(minutes: 7, seconds: 13),
+        Duration(minutes: 21),
+        Duration(minutes: 2, seconds: 45),
+        Duration(hours: 1),
+      ];
+      for (var i = 0; i < durations.length; i++) {
+        for (final offsetMs in [0, 1, 5000, durations[i].inMilliseconds - 1]) {
+          if (offsetMs < 0) continue;
+          final global = calculateGlobalPosition(
+            chapterIndex: i,
+            chapterPosition: Duration(milliseconds: offsetMs),
+            chapterDurations: durations,
+          );
+          final back = globalToChapterPosition(global, durations);
+          expect(back.chapterIndex, i,
+              reason: 'global=$global sample=($i, $offsetMs)');
+          expect(back.position.inMilliseconds, offsetMs,
+              reason: 'global=$global sample=($i, $offsetMs)');
+        }
+      }
+    });
+  });
+
   group('calculateGlobalPosition', () {
     test('returns raw chapter offset for chapter 0', () {
       final ms = calculateGlobalPosition(
@@ -95,7 +174,7 @@ void main() {
           const Duration(minutes: 2),
         ],
       );
-      // 60_000 + 120_000 + 10_000
+      // 60000 + 120000 + 10000
       expect(ms, 190000);
     });
   });
@@ -111,6 +190,52 @@ void main() {
       await persister.save();
       // Nothing inserted.
       expect(await svc.getPosition('/books/test'), isNull);
+    });
+
+    test('save() is suppressed when readPosition returns null', () async {
+      final svc = await _makeService();
+      final persister = PositionPersister(
+        positionService: svc,
+        getBook: () => _book(path: '/books/dune'),
+        readPosition: () => null, // mid-load suppression
+      );
+      await persister.save();
+      expect(await svc.getPosition('/books/dune'), isNull);
+    });
+
+    test('saveSnapshot persists the same math as save()', () async {
+      final svc = await _makeService();
+      const path = '/books/snapshot';
+      final book = _book(
+        path: path,
+        chapterDurations: [
+          const Duration(minutes: 10),
+          const Duration(minutes: 10),
+        ],
+        duration: const Duration(minutes: 20),
+      );
+      final persister = PositionPersister(
+        positionService: svc,
+        getBook: () => book,
+        readPosition: () => (
+          chapterIndex: 1,
+          position: const Duration(minutes: 3),
+        ),
+      );
+
+      await persister.saveSnapshot(
+        book: book,
+        snap: (
+          chapterIndex: 1,
+          position: const Duration(minutes: 3),
+        ),
+      );
+
+      final saved = await svc.getPosition(path);
+      expect(saved!.chapterIndex, 1);
+      expect(saved.position, const Duration(minutes: 3));
+      final row = (await svc.getAllPositions()).single;
+      expect(row.globalPositionMs, const Duration(minutes: 13).inMilliseconds);
     });
 
     test('save() writes the current snapshot to the DB', () async {

@@ -16,7 +16,7 @@ import 'preferences_service.dart';
 import '../locator.dart';
 
 class KowhaiHandler extends BaseAudioHandler {
-  final _player = AudioPlayer();
+  final AudioPlayer _player;
   Audiobook? _book;
   Uri? _artUri;
   late final pp.PositionPersister _persister;
@@ -25,8 +25,22 @@ class KowhaiHandler extends BaseAudioHandler {
   DateTime? _lastPausedAt;
   bool _autoRewind = true;
 
+  /// True while a book is being loaded. The persister's [pp.PositionPersister.readPosition]
+  /// closure consults this to suppress saves that would sample transitional
+  /// player state mid-swap.
+  bool _loading = false;
+
+  /// Serialises concurrent loadBook calls (e.g. double-tap on two cards) so
+  /// their bodies can't interleave.
+  Future<void> _loadQueue = Future.value();
+
   AudioPlayer get player => _player;
   Audiobook? get currentBook => _book;
+
+  /// Direct access to the persister for tests (e.g. asserting that periodic
+  /// saves are suppressed mid-load).
+  @visibleForTesting
+  pp.PositionPersister get persister => _persister;
 
   // ── Cast state ──────────────────────────────────────────────────────────────
 
@@ -58,14 +72,22 @@ class KowhaiHandler extends BaseAudioHandler {
   String? _lastError;
   String? get lastError => _lastError;
 
-  KowhaiHandler() {
+  /// [player] and [cast] are test seams — production callers use the
+  /// parameterless constructor, which builds the real implementations.
+  KowhaiHandler({
+    @visibleForTesting AudioPlayer? player,
+    @visibleForTesting CastController? cast,
+  }) : _player = player ?? AudioPlayer() {
     _persister = pp.PositionPersister(
       positionService: locator<PositionService>(),
       getBook: () => _book,
-      readPosition: () => (
-        chapterIndex: _player.currentIndex ?? 0,
-        position: isCasting ? _cast.position : _player.position,
-      ),
+      readPosition: () {
+        if (_loading) return null; // mid-load state is not persistable
+        return (
+          chapterIndex: _player.currentIndex ?? 0,
+          position: isCasting ? _cast.position : _player.position,
+        );
+      },
     );
 
     _driveRemoval = DriveRemovalScheduler(
@@ -81,14 +103,15 @@ class KowhaiHandler extends BaseAudioHandler {
       setMediaItem: mediaItem.add,
     );
 
-    _cast = CastController(
-      localPlayer: _player,
-      persister: _persister,
-      getBook: () => _book,
-      onEffectivePosition: (p) => _effectivePositionController.add(p),
-      onEffectiveDuration: (d) => _effectiveDurationController.add(d),
-      onStatusChanged: _onCastStatusChanged,
-    );
+    _cast = cast ??
+        CastController(
+          localPlayer: _player,
+          persister: _persister,
+          getBook: () => _book,
+          onEffectivePosition: (p) => _effectivePositionController.add(p),
+          onEffectiveDuration: (d) => _effectiveDurationController.add(d),
+          onStatusChanged: _onCastStatusChanged,
+        );
 
     final prefs = locator<PreferencesService>();
     prefs.getSkipInterval().then((s) => _broadcaster.skipInterval = s);
@@ -178,48 +201,83 @@ class KowhaiHandler extends BaseAudioHandler {
 
   // ── Loading ────────────────────────────────────────────────────────────────
 
-  Future<void> loadBook(Audiobook book) async {
-    if (_book?.path == book.path) return; // already loaded — resume in place
-    _book = book;
+  /// Loads [book], restoring its saved position. Concurrent calls are
+  /// serialised; switching books while casting tears the cast session down
+  /// FIRST (while the old book's sources are still loaded) so the teardown
+  /// seek-back lands on the correct audio.
+  Future<void> loadBook(Audiobook book) {
+    final op = _loadQueue.then((_) => _doLoadBook(book));
+    // Keep the chain alive when a load fails — the next caller shouldn't
+    // inherit this one's error.
+    _loadQueue = op.catchError((_, __) {});
+    return op;
+  }
 
-    // Resolve artwork URI for the notification.
-    _artUri = null;
-    if (book.coverImagePath != null) {
-      _artUri = Uri.file(book.coverImagePath!);
-    } else if (book.coverImageBytes != null) {
+  Future<void> _doLoadBook(Audiobook book) async {
+    if (_book?.path == book.path) return; // already loaded — resume in place
+
+    // Switching books while casting: stop the cast BEFORE touching local
+    // sources. CastController.stop() seeks the local player to the receiver's
+    // last position — that seek is only meaningful while the casted book's
+    // sources are still loaded. Best-effort: a failed teardown must not block
+    // the new load.
+    if (isCasting) {
       try {
-        final tmp = await getTemporaryDirectory();
-        final f = File('${tmp.path}/kowhai_cover_${book.path.hashCode.abs()}.jpg');
-        if (!await f.exists()) await f.writeAsBytes(book.coverImageBytes!);
-        _artUri = f.uri;
-      } catch (_) {}
+        await _cast.stop();
+      } catch (e) {
+        debugPrint('[Kowhai:Player] cast teardown before load failed: $e');
+      }
     }
 
-    // Restore saved position, or start from beginning.
-    final saved = await locator<PositionService>().getPosition(book.path);
-
-    final sources =
-        book.audioFiles.map((p) => AudioSource.uri(Uri.file(p))).toList();
+    _loading = true;
     try {
+      // Resolve artwork URI for the notification.
+      Uri? artUri;
+      if (book.coverImagePath != null) {
+        artUri = Uri.file(book.coverImagePath!);
+      } else if (book.coverImageBytes != null) {
+        try {
+          final tmp = await getTemporaryDirectory();
+          final f =
+              File('${tmp.path}/kowhai_cover_${book.path.hashCode.abs()}.jpg');
+          if (!await f.exists()) await f.writeAsBytes(book.coverImageBytes!);
+          artUri = f.uri;
+        } catch (_) {}
+      }
+
+      // Repair legacy rows that only carry a global position (restored from
+      // old backups) before reading them — self-heals at the point of harm.
+      final positionService = locator<PositionService>();
+      try {
+        await positionService.repairFromGlobal(book);
+      } catch (e) {
+        debugPrint('[Kowhai:Player] position repair skipped: $e');
+      }
+
+      final saved = await positionService.getPosition(book.path);
+
+      final sources =
+          book.audioFiles.map((p) => AudioSource.uri(Uri.file(p))).toList();
       await _player.setAudioSources(
         sources,
         initialIndex: saved?.chapterIndex ?? 0,
         initialPosition: saved?.position,
       );
-    } catch (e) {
-      _book = null;
-      _artUri = null;
+
+      // Load succeeded — only now does the new book become current. On
+      // failure the previous book stays current (no null limbo).
+      _book = book;
+      _artUri = artUri;
+      _clearError();
+      _publishMediaItem();
+
+      // Re-cast the freshly loaded book if the session survived.
+      if (_cast.isSessionConnected) await _cast.start();
+    } on Exception catch (e) {
       _reportError(_humanizePlayerError(e));
       rethrow;
-    }
-    // Load succeeded — clear any stale error.
-    _clearError();
-    _publishMediaItem();
-
-    // If already casting, re-cast the new book.
-    if (isCasting) {
-      await _cast.stop();
-      if (_cast.isSessionConnected) await _cast.start();
+    } finally {
+      _loading = false;
     }
   }
 
@@ -275,7 +333,7 @@ class KowhaiHandler extends BaseAudioHandler {
     _lastPausedAt = DateTime.now();
     if (isCasting) {
       await _cast.pause();
-      _persister.save();
+      await _persister.save(); // awaited: a silent failure loses progress
     } else {
       await _player.pause();
     }
@@ -375,11 +433,14 @@ class KowhaiHandler extends BaseAudioHandler {
 
   @override
   Future<void> stop() async {
+    // Exactly one save on either path: while casting, CastController.stop()
+    // performs the final snapshot save (from the receiver position cache) and
+    // tears the session + server down; otherwise the local persister saves.
     if (isCasting) {
+      await _cast.stop();
+    } else {
       await _persister.save();
-      await _cast.stopClient();
     }
-    await _persister.save();
     await _player.stop();
     return super.stop();
   }
