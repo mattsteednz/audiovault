@@ -29,6 +29,7 @@ class AudiobookCard extends StatelessWidget {
         EnrichmentAwareCover(
           book: book,
           iconSize: 52,
+          decodeSize: 512,
         ),
         if (book.isDrmLocked)
           Positioned.fill(

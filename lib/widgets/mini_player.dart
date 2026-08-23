@@ -68,7 +68,10 @@ class MiniPlayer extends StatelessWidget {
                               child: SizedBox(
                                 width: 48,
                                 height: 48,
-                                child: BookCover(book: book, iconSize: 28),
+                                    child: BookCover(
+                                        book: book,
+                                        iconSize: 28,
+                                        decodeSize: 144),
                               ),
                             ),
                             const SizedBox(width: 12),

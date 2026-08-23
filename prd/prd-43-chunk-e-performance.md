@@ -32,3 +32,16 @@ Branch: `chore/perf-scan-and-covers`
 ## Acceptance
 - analyze+test green; no behavioral changes; scan of large library no longer
   drops frames (profile-mode note appended below by implementer).
+
+## Architect amendments (2026-08-23, binding)
+- CHUNK the isolate work: batches of ~20 files via Isolate.run per chunk so
+  live scan-phase labels keep flowing; monolithic run kills them.
+- Per-file try/catch INSIDE the worker; one corrupt file must not kill batch.
+- Art bytes cross isolates COPIED: cap extracted embedded art (4 MB) to bound
+  transient spikes on low-end devices.
+- DB writes stay on main isolate post-result.
+- cacheWidth/cacheHeight are PHYSICAL px: multiply logical surface size by
+  MediaQuery.devicePixelRatioOf(context). Different sizes = separate cache
+  entries (fine).
+- Measurement: record method now (DevTools timeline jank frames + scan wall
+  time on owner device during pre-tag smoke); synthetic bench test logs only.

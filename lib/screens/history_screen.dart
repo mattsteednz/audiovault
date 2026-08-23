@@ -79,7 +79,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
         child: SizedBox(
           width: 52,
           height: 52,
-          child: BookCover(book: book, iconSize: 26),
+          child: BookCover(book: book, iconSize: 26, decodeSize: 160),
         ),
       ),
       title: Text(

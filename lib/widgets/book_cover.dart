@@ -24,6 +24,12 @@ class BookCover extends StatelessWidget {
   final bool enrichmentFailed;
   final CoverPlaceholderStyle placeholderStyle;
 
+  /// Target decode size in LOGICAL pixels for the cover image. Multiplied by
+  /// the device pixel ratio to derive cacheWidth/cacheHeight so large embedded
+  /// art is downsampled at decode time instead of being decoded full-size on
+  /// every rebuild (memory + jank win on big libraries).
+  final double decodeSize;
+
   const BookCover({
     super.key,
     required this.book,
@@ -31,6 +37,7 @@ class BookCover extends StatelessWidget {
     this.isEnriching = false,
     this.enrichmentFailed = false,
     this.placeholderStyle = CoverPlaceholderStyle.title,
+    this.decodeSize = 256,
   });
 
   /// Muted mid-tone palette used for placeholder tiles when no cover art exists.
@@ -74,10 +81,16 @@ class BookCover extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // Physical-pixel decode target: logical size x device pixel ratio, so
+    // covers stay sharp at DPR 3 while capping decode memory.
+    final cachePx =
+        (decodeSize * MediaQuery.devicePixelRatioOf(context)).round();
     if (book.coverImageBytes != null) {
       return Image.memory(
         book.coverImageBytes!,
         fit: BoxFit.cover,
+        cacheWidth: cachePx,
+        cacheHeight: cachePx,
         errorBuilder: (_, __, ___) => _placeholder(),
       );
     }
@@ -85,6 +98,8 @@ class BookCover extends StatelessWidget {
       return Image.file(
         File(book.coverImagePath!),
         fit: BoxFit.cover,
+        cacheWidth: cachePx,
+        cacheHeight: cachePx,
         errorBuilder: (_, __, ___) => _placeholder(),
       );
     }

@@ -474,7 +474,10 @@ class _PlayerScreenState extends State<PlayerScreen> {
                     aspectRatio: 1,
                     child: ClipRRect(
                       borderRadius: BorderRadius.circular(16),
-                      child: BookCover(book: widget.book, iconSize: 80),
+                      child: BookCover(
+                          book: widget.book,
+                          iconSize: 80,
+                          decodeSize: 1024),
                     ),
                   ),
                 ),

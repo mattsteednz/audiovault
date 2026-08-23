@@ -45,22 +45,24 @@ class AudiobookListTile extends StatelessWidget {
       child: SizedBox(
         width: 56,
         height: 56,
-        child: book.source == AudiobookSource.drive
-            ? DriveDownloadOverlay(
-                book: book,
-                iconSize: 24,
-                indicatorSize: 24,
-                child: EnrichmentAwareCover(
+          child: book.source == AudiobookSource.drive
+              ? DriveDownloadOverlay(
+                  book: book,
+                  iconSize: 24,
+                  indicatorSize: 24,
+                  child: EnrichmentAwareCover(
+                    book: book,
+                    iconSize: 28,
+                    placeholderStyle: CoverPlaceholderStyle.initial,
+                    decodeSize: 192,
+                  ),
+                )
+              : EnrichmentAwareCover(
                   book: book,
                   iconSize: 28,
                   placeholderStyle: CoverPlaceholderStyle.initial,
+                  decodeSize: 192,
                 ),
-              )
-            : EnrichmentAwareCover(
-                book: book,
-                iconSize: 28,
-                placeholderStyle: CoverPlaceholderStyle.initial,
-              ),
       ),
     );
 

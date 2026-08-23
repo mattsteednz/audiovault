@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'dart:isolate';
 import 'package:audio_metadata_reader/audio_metadata_reader.dart';
 import 'package:flutter/foundation.dart';
 import 'package:path/path.dart' as p;
@@ -239,54 +240,65 @@ class ScannerService {
       }
     }
 
-    // Read metadata from each audio file.
-    // – Duration is always summed across all files.
-    // – Title/author are taken from the first file that has them.
-    // – Embedded art is taken from the first file that has it
-    //   (only sought when no image file exists on disk).
-    for (final filePath in audioFiles) {
-      try {
-        final needArt = coverPath == null && !foundCoverInMetadata;
-        final metadata = readMetadata(File(filePath), getImage: needArt);
+    // Read metadata from each audio file in BACKGROUND-ISOLATE CHUNKS so
+    // large libraries don't jank the UI thread. Chunking (rather than one
+    // monolithic Isolate.run) lets the event loop breathe between batches so
+    // live scan-phase labels keep flowing. Per-file errors are contained
+    // inside the worker and surface as zero-duration entries, exactly like
+    // the previous inline try/catch behaviour.
+    //
+    // - Duration is always summed across all files.
+    // - Title/author are taken from the first file that has them.
+    // - Embedded art is taken from the first file that has it (only sought
+    //   when no image file exists on disk), capped at _maxEmbeddedArtBytes
+    //   because bytes cross isolate boundaries by copy.
+    const metadataChunkSize = 20;
+    for (var i = 0; i < audioFiles.length; i += metadataChunkSize) {
+      final chunk = audioFiles
+          .sublist(i, (i + metadataChunkSize).clamp(0, audioFiles.length));
+      final wantArt = coverPath == null && !foundCoverInMetadata;
+      final metas =
+          await Isolate.run(() => readMetadataChunk(chunk, wantArt: wantArt));
+
+      for (var j = 0; j < metas.length; j++) {
+        final meta = metas[j];
+        final fileName = p.basename(audioFiles[i + j]);
+
+        if (meta.error != null) {
+          _log('    Metadata error for $fileName: ${meta.error}');
+        }
 
         // Sum durations.
-        final fileDur = metadata.duration ?? Duration.zero;
-        chapterDurations.add(fileDur);
-        totalDuration += fileDur;
+        chapterDurations.add(meta.duration);
+        totalDuration += meta.duration;
 
         // Collect raw track title for chapter name detection later.
-        rawTitles.add(metadata.title?.trim().isEmpty == true
-            ? null
-            : metadata.title?.trim());
+        rawTitles.add(meta.title);
 
         // Use album tag as book title (track title is a chapter name, not the book).
         if (title == name) {
-          final album = metadata.album;
+          final album = meta.album;
           if (album != null && album.isNotEmpty) title = album;
         }
 
         // Use first non-empty artist as author; fall back to performers list.
-        // OPF author takes precedence — only read from tags if OPF had none.
+        // OPF author takes precedence - only read from tags if OPF had none.
         if (author == null && opf.author == null) {
-          final a = metadata.artist;
+          final a = meta.artist;
           if (a != null && a.isNotEmpty) {
             author = a;
-          } else if (metadata.performers.isNotEmpty) {
-            author = metadata.performers.first;
+          } else if (meta.firstPerformer != null) {
+            author = meta.firstPerformer;
           }
         }
 
         // Extract embedded cover art.
-        if (needArt && metadata.pictures.isNotEmpty) {
-          coverBytes = metadata.pictures.first.bytes;
+        if (!foundCoverInMetadata && meta.art != null) {
+          coverBytes = meta.art;
           foundCoverInMetadata = true;
-          _log('    Embedded art found in ${p.basename(filePath)}: '
-              '${coverBytes.length} bytes');
+          _log('    Embedded art found in $fileName: '
+              '${coverBytes!.length} bytes');
         }
-      } catch (e) {
-        _log('    Metadata error for ${p.basename(filePath)}: $e');
-        chapterDurations.add(Duration.zero); // keep list in sync with audioFiles
-        rawTitles.add(null);
       }
     }
 
@@ -563,4 +575,69 @@ class ScannerService {
   bool _isAudio(String path) => _audioExtensions.contains(p.extension(path).toLowerCase());
   bool _isImage(String path) => _imageExtensions.contains(p.extension(path).toLowerCase());
   bool _isDrm(String path) => _drmExtensions.contains(p.extension(path).toLowerCase());
+}
+
+// ── Background-isolate metadata worker ──────────────────────────────────────
+
+/// Cap on embedded artwork bytes extracted per file. Art crosses isolate
+/// boundaries by copy; unbounded covers spike memory on low-end devices.
+const int _maxEmbeddedArtBytes = 4 * 1024 * 1024;
+
+/// Per-file metadata extracted by [readMetadataChunk] inside a background
+/// isolate. Mirrors the subset of AudioMetadata the scanner consumes.
+typedef FileMetadata = ({
+  Duration duration,
+  String? title,
+  String? album,
+  String? artist,
+  String? firstPerformer,
+  Uint8List? art,
+
+  /// Non-null when reading this file failed - mirrors the previous inline
+  /// catch behaviour where a bad file yields a zero-duration entry.
+  String? error,
+});
+
+/// Reads audio metadata for [paths] in one batch. Top-level function so it
+/// can be invoked via [Isolate.run]. Never throws: per-file failures are
+/// reported through [FileMetadata.error] and produce zero-duration entries.
+List<FileMetadata> readMetadataChunk(
+  List<String> paths, {
+  required bool wantArt,
+}) {
+  final out = <FileMetadata>[];
+  var seekArt = wantArt;
+  for (final path in paths) {
+    try {
+      final m = readMetadata(File(path), getImage: seekArt);
+      Uint8List? art;
+      if (seekArt && m.pictures.isNotEmpty) {
+        final bytes = m.pictures.first.bytes;
+        if (bytes.length <= _maxEmbeddedArtBytes) {
+          art = bytes;
+          seekArt = false; // first found wins, same as the inline original
+        }
+      }
+      out.add((
+        duration: m.duration ?? Duration.zero,
+        title: m.title?.trim().isEmpty == true ? null : m.title?.trim(),
+        album: m.album,
+        artist: m.artist,
+        firstPerformer: m.performers.isNotEmpty ? m.performers.first : null,
+        art: art,
+        error: null,
+      ));
+    } catch (e) {
+      out.add((
+        duration: Duration.zero,
+        title: null,
+        album: null,
+        artist: null,
+        firstPerformer: null,
+        art: null,
+        error: e.toString(),
+      ));
+    }
+  }
+  return out;
 }
