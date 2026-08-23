@@ -15,7 +15,9 @@ typedef PositionSnapshot = ({int chapterIndex, Duration position});
 ///
 /// Source-agnostic by design — the caller injects [readPosition] and
 /// [getBook] closures so the same class works for local playback, Cast
-/// playback, or any future source.
+/// playback, or any future source. [readPosition] returning null suppresses
+/// the save: used while a book is being loaded, where sampling transitional
+/// player state could persist one book's path with another's position.
 class PositionPersister {
   PositionPersister({
     required this.positionService,
@@ -25,7 +27,10 @@ class PositionPersister {
   });
 
   final PositionService positionService;
-  final PositionSnapshot Function() readPosition;
+
+  /// Returns the current snapshot, or null when saving must be suppressed
+  /// (e.g. mid-`loadBook`).
+  final PositionSnapshot? Function() readPosition;
   final Audiobook? Function() getBook;
   final Duration interval;
 
@@ -46,11 +51,22 @@ class PositionPersister {
     _timer = null;
   }
 
-  /// Save the current position right now. No-op if no book is loaded.
+  /// Save the current position right now. No-op if no book is loaded or the
+  /// [readPosition] closure suppresses the sample.
   Future<void> save() async {
     final book = getBook();
     if (book == null) return;
     final snap = readPosition();
+    if (snap == null) return;
+    await saveSnapshot(book: book, snap: snap);
+  }
+
+  /// Persist an explicit snapshot for [book]. Single implementation of the
+  /// global-position math shared by [save] and Cast teardown.
+  Future<void> saveSnapshot({
+    required Audiobook book,
+    required PositionSnapshot snap,
+  }) async {
     await positionService.savePosition(
       bookPath: book.path,
       chapterIndex: snap.chapterIndex,

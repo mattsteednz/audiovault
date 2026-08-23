@@ -111,17 +111,22 @@ class Audiobook {
 
   /// Returns the index of the M4B embedded chapter that contains [position].
   /// Returns 0 if [chapters] is empty.
+  ///
+  /// Precondition: [chapters] is sorted ascending by [Chapter.start] — both
+  /// parsers (M4B box walker, CUE) guarantee this. Lookup is a binary search.
   int chapterIndexAt(Duration position) {
     if (chapters.isEmpty) return 0;
-    int current = 0;
-    for (int i = 0; i < chapters.length; i++) {
-      if (position >= chapters[i].start) {
-        current = i;
+    int lo = 0, hi = chapters.length - 1, best = 0;
+    while (lo <= hi) {
+      final mid = (lo + hi) >> 1;
+      if (chapters[mid].start <= position) {
+        best = mid;
+        lo = mid + 1;
       } else {
-        break;
+        hi = mid - 1;
       }
     }
-    return current;
+    return best;
   }
 
   Audiobook copyWith({

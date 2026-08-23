@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'package:flutter/foundation.dart';
 import 'package:sqflite/sqflite.dart';
 import 'position_service.dart';
 
@@ -226,12 +227,15 @@ class DriveBookRepository {
 
   /// Recovers stale 'downloading' state on startup (e.g. after process kill).
   ///
-  /// A file is considered complete only when its size on disk matches the
-  /// expected size stored in the DB. A partial file (process killed mid-write)
-  /// is deleted and the record is reset to 'none' so the download can restart
-  /// cleanly. An exact size match marks the file as 'done' — this covers the
-  /// race where the download finished but the DB update was killed before it
-  /// could be written.
+  /// A file is considered complete when its on-disk size reaches the expected
+  /// size stored in the DB (`>=` covers the race where the download finished
+  /// but the DB update was killed before it could be written). When the
+  /// expected size is unknown (0), any non-empty file is trusted rather than
+  /// deleting possibly-complete user data. A partial file is deleted and the
+  /// record reset to 'none' so the download restarts cleanly.
+  ///
+  /// File IO failures are logged and skipped: this runs before the first frame
+  /// (main.dart), and one unreadable file must never block app launch.
   Future<void> resetStaleDownloads() async {
     final db = await _db;
     final stale = await db.query(
@@ -244,14 +248,19 @@ class DriveBookRepository {
 
       bool isComplete = false;
       if (localPath != null) {
-        final file = File(localPath);
-        if (await file.exists()) {
-          final actualSize = await file.length();
-          if (expectedSize > 0 && actualSize >= expectedSize) {
-            isComplete = true;
-          } else {
-            await file.delete(); // remove partial so next download starts fresh
+        try {
+          final file = File(localPath);
+          if (await file.exists()) {
+            final actualSize = await file.length();
+            if ((expectedSize > 0 && actualSize >= expectedSize) ||
+                (expectedSize == 0 && actualSize > 0)) {
+              isComplete = true;
+            } else {
+              await file.delete(); // remove partial so next download starts fresh
+            }
           }
+        } catch (e) {
+          debugPrint('[Kowhai:DriveRepo] recovery skipped $localPath: $e');
         }
       }
 

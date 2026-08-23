@@ -339,5 +339,34 @@ void main() {
       expect(files.firstWhere((f) => f.fileIndex == 1).downloadState,
           DriveDownloadState.error);
     });
+
+    test('resetStaleDownloads trusts non-empty file when expected size is unknown',
+        () async {
+      final tmpDir = await Directory.systemTemp.createTemp('avrepo_');
+      addTearDown(() => tmpDir.delete(recursive: true));
+
+      final tmpFile = File('${tmpDir.path}/track.mp3');
+      await tmpFile.writeAsBytes(List.filled(256, 0));
+
+      await repo.upsertDriveBook(_book('F5'));
+      await repo.upsertFile(DriveFileRecord(
+        folderId: 'F5',
+        fileIndex: 0,
+        fileId: 'f5-0',
+        fileName: 'track.mp3',
+        mimeType: 'audio/mpeg',
+        sizeBytes: 0, // size unknown at record time
+        downloadState: DriveDownloadState.downloading,
+        localPath: tmpFile.path,
+      ));
+
+      await repo.resetStaleDownloads();
+
+      final files = await repo.getFilesForBook('F5');
+      expect(files.first.downloadState, DriveDownloadState.done,
+          reason:
+              'unknown-size records must not delete possibly-complete data');
+      expect(tmpFile.existsSync(), isTrue);
+    });
   });
 }

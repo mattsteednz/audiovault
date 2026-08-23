@@ -243,6 +243,7 @@ class PreferencesService {
     await (await _sp).setString(_availabilityFilterKey, value.name);
   }
 
+
   /// Persisted library status filter (progress pills). Returns null when the
   /// user is showing all statuses.
   Future<BookStatus?> getStatusFilter() async {
@@ -261,5 +262,16 @@ class PreferencesService {
     } else {
       await prefs.setString(_statusFilterKey, status.name);
     }
+  }
+
+  static const _viewModeKey = 'view_mode';
+
+  /// Persisted library layout. Defaults to grid; unknown values fall back.
+  Future<String> getViewMode() async {
+    return (await _sp).getString(_viewModeKey) ?? 'grid';
+  }
+
+  Future<void> setViewMode(String value) async {
+    await (await _sp).setString(_viewModeKey, value);
   }
 }

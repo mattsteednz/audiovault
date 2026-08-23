@@ -23,12 +23,18 @@ class M4bChapterParser {
       // Try Nero chpl (less common)
       final nero = await _scanForChpl(raf, 0, fileSize);
       if (nero.isNotEmpty) {
+        // Box order is not guaranteed to be chronological — normalise.
+        nero.sort((a, b) => a.start.compareTo(b.start));
         _log('    M4B chapters (Nero): ${nero.length}');
         return nero;
       }
 
       // Try QuickTime chapter track (iTunes / Audible format)
       final qt = await _parseQTChapters(raf, fileSize);
+      if (qt.isNotEmpty) {
+        // Sample/chunk tables can yield out-of-order titles on odd muxes.
+        qt.sort((a, b) => a.start.compareTo(b.start));
+      }
       _log('    M4B chapters (QT): ${qt.length}');
       return qt;
     } catch (e) {
@@ -94,7 +100,15 @@ class M4bChapterParser {
       if (box.$1 == 'chpl') {
         return _parseChpl(await _readBox(raf, box));
       }
-      if (box.$1 == 'moov' || box.$1 == 'udta' || box.$1 == 'meta') {
+      if (box.$1 == 'moov' || box.$1 == 'udta') {
+        final result = await _scanForChpl(raf, box.$2, box.$3);
+        if (result.isNotEmpty) return result;
+      } else if (box.$1 == 'meta') {
+        // `meta` is a FullBox: 4 bytes of version/flags sit between the box
+        // header and its child boxes (ISO/IEC 14496-12). Some legacy writers
+        // omit them, so try the standard layout first, then the raw payload.
+        final std = await _scanForChpl(raf, box.$2 + 4, box.$3);
+        if (std.isNotEmpty) return std;
         final result = await _scanForChpl(raf, box.$2, box.$3);
         if (result.isNotEmpty) return result;
       }

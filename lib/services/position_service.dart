@@ -3,6 +3,7 @@ import 'package:path_provider/path_provider.dart';
 import 'package:sqflite/sqflite.dart';
 import '../models/audiobook.dart';
 import '../models/bookmark.dart';
+import '../utils/formatters.dart';
 
 // Callback type for notifying that a position was saved.
 typedef PositionSavedCallback = void Function();
@@ -49,24 +50,32 @@ class PositionService {
             status TEXT
           )
         ''');
-        await _createDriveTables(db);
-        await _createBookmarksTable(db);
+        await createDriveTables(db);
+        await createBookmarksTable(db);
       },
-      onUpgrade: (db, oldVersion, newVersion) async {
-        if (oldVersion < 2) {
-          await _createDriveTables(db);
-        }
-        if (oldVersion < 3) {
-          await db.execute('ALTER TABLE positions ADD COLUMN status TEXT');
-        }
-        if (oldVersion < 4) {
-          await _createBookmarksTable(db);
-        }
-      },
+      onUpgrade: (db, oldVersion, newVersion) =>
+          performUpgrades(db, oldVersion),
     );
   }
 
-  Future<void> _createBookmarksTable(Database db) async {
+  /// The production upgrade chain, exposed for tests: the real onUpgrade
+  /// delegates here, so tests exercise exactly what ships. Each step is
+  /// additive and idempotent per version gate.
+  @visibleForTesting
+  static Future<void> performUpgrades(Database db, int oldVersion) async {
+    if (oldVersion < 2) {
+      await createDriveTables(db);
+    }
+    if (oldVersion < 3) {
+      await db.execute('ALTER TABLE positions ADD COLUMN status TEXT');
+    }
+    if (oldVersion < 4) {
+      await createBookmarksTable(db);
+    }
+  }
+
+  @visibleForTesting
+  static Future<void> createBookmarksTable(Database db) async {
     await db.execute('''
       CREATE TABLE bookmarks (
         id           INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -82,7 +91,8 @@ class PositionService {
         'CREATE INDEX idx_bookmarks_book_path ON bookmarks(book_path)');
   }
 
-  Future<void> _createDriveTables(Database db) async {
+  @visibleForTesting
+  static Future<void> createDriveTables(Database db) async {
     await db.execute('''
       CREATE TABLE drive_books (
         folder_id       TEXT PRIMARY KEY,
@@ -118,19 +128,70 @@ class PositionService {
     required int totalDurationMs,
   }) async {
     final db = await _database;
-    await db.insert(
-      'positions',
-      {
-        'book_path': bookPath,
-        'chapter_index': chapterIndex,
-        'position_ms': position.inMilliseconds,
-        'global_position_ms': globalPositionMs,
-        'total_duration_ms': totalDurationMs,
-        'updated_at': DateTime.now().millisecondsSinceEpoch,
-      },
-      conflictAlgorithm: ConflictAlgorithm.replace,
+    // UPSERT that never touches the explicit `status` column — a periodic or
+    // pause-time save must not wipe a status the user set manually. (The
+    // mirror-image invariant lives in setBookStatus below, which never
+    // touches the position columns.) ConflictAlgorithm.replace would be wrong
+    // here: SQLite REPLACE deletes the conflicting row, silently nulling
+    // `status`.
+    await db.rawInsert(
+      'INSERT INTO positions '
+      '(book_path, chapter_index, position_ms, global_position_ms, total_duration_ms, updated_at) '
+      'VALUES (?, ?, ?, ?, ?, ?) '
+      'ON CONFLICT(book_path) DO UPDATE SET '
+      'chapter_index=excluded.chapter_index, '
+      'position_ms=excluded.position_ms, '
+      'global_position_ms=excluded.global_position_ms, '
+      'total_duration_ms=excluded.total_duration_ms, '
+      'updated_at=excluded.updated_at',
+      [
+        bookPath,
+        chapterIndex,
+        position.inMilliseconds,
+        globalPositionMs,
+        totalDurationMs,
+        DateTime.now().millisecondsSinceEpoch,
+      ],
     );
     onPositionSaved?.call();
+  }
+
+  /// Repairs rows restored from legacy backups that only carried a global
+  /// position: signature is `chapter_index == 0 && position_ms == 0 &&
+  /// global_position_ms > 0`, which no genuine save can produce (for
+  /// chapter 0, global == intra-chapter position by definition).
+  ///
+  /// Rewrites only `chapter_index`/`position_ms` via the pure inverse mapper —
+  /// never `global_position_ms`, which status derivation reads — and never
+  /// touches an explicit `status`. Idempotent; returns true when rewritten.
+  Future<bool> repairFromGlobal(Audiobook book) async {
+    if (book.chapterDurations.isEmpty) return false;
+    final db = await _database;
+    final rows = await db.query(
+      'positions',
+      columns: ['chapter_index', 'position_ms', 'global_position_ms'],
+      where: 'book_path = ?',
+      whereArgs: [book.path],
+      limit: 1,
+    );
+    if (rows.isEmpty) return false;
+    final row = rows.first;
+    final chapterIndex = row['chapter_index'] as int? ?? 0;
+    final positionMs = row['position_ms'] as int? ?? 0;
+    final globalMs = row['global_position_ms'] as int? ?? 0;
+    if (chapterIndex != 0 || positionMs != 0 || globalMs <= 0) return false;
+
+    final mapped = globalToChapterPosition(globalMs, book.chapterDurations);
+    await db.update(
+      'positions',
+      {
+        'chapter_index': mapped.chapterIndex,
+        'position_ms': mapped.position.inMilliseconds,
+      },
+      where: 'book_path = ?',
+      whereArgs: [book.path],
+    );
+    return true;
   }
 
   Future<({int chapterIndex, Duration position})?> getPosition(
@@ -294,6 +355,8 @@ class PositionService {
     return rows
         .map((r) => (
               bookPath: r['book_path'] as String,
+              chapterIndex: r['chapter_index'] as int? ?? 0,
+              positionMs: r['position_ms'] as int? ?? 0,
               globalPositionMs: r['global_position_ms'] as int,
               totalDurationMs: r['total_duration_ms'] as int,
               updatedAt: r['updated_at'] as int,
@@ -304,6 +367,8 @@ class PositionService {
 
 typedef BookProgress = ({
   String bookPath,
+  int chapterIndex,
+  int positionMs,
   int globalPositionMs,
   int totalDurationMs,
   int updatedAt,

@@ -13,6 +13,8 @@ Audiobook _book(String title) =>
 
 BookProgress _progress(String path, int updatedAt) => (
       bookPath: path,
+      chapterIndex: 0,
+      positionMs: 0,
       globalPositionMs: 0,
       totalDurationMs: 0,
       updatedAt: updatedAt,
@@ -453,9 +455,13 @@ void _propertyTests() {
           // **Validates: Requirements 2.4**
           final (books, availFilter, statusFilter) = args;
 
-          // Build a minimal statuses map (all books treated as notStarted
-          // unless we explicitly set them — sufficient to test composition).
-          final statuses = <String, BookStatus>{};
+          // Deterministic per-book explicit statuses so the status predicate
+          // carries real information (a mix of all three values across books).
+          final statuses = <String, BookStatus>{
+            for (final b in books)
+              b.path: BookStatus
+                  .values[b.title.length % BookStatus.values.length],
+          };
 
           final availResult = applyAvailabilityFilter(books, availFilter);
           final composed = applyStatusFilter(availResult, statuses, statusFilter);
@@ -484,12 +490,26 @@ void _propertyTests() {
                 reason:
                     'Book "${b.title}" in composed result does not satisfy availability predicate');
 
-            // Status predicate
+            // Status predicate against the populated statuses map
             if (statusFilter != null) {
               final bookStatus = statuses[b.path] ?? BookStatus.notStarted;
               expect(bookStatus, equals(statusFilter),
                   reason:
                       'Book "${b.title}" in composed result does not satisfy status predicate');
+            }
+          }
+
+          // Completeness: every book passing BOTH predicates must appear in
+          // the composed result.
+          final composedPaths = composed.map((b) => b.path).toSet();
+          for (final b in availResult) {
+            final bookStatus = statuses[b.path] ?? BookStatus.notStarted;
+            final passesBoth =
+                statusFilter == null || bookStatus == statusFilter;
+            if (passesBoth) {
+              expect(composedPaths, contains(b.path),
+                  reason:
+                      'Book "${b.title}" passes both predicates but is missing from the composed result');
             }
           }
         },
@@ -500,7 +520,7 @@ void _propertyTests() {
 
   // Feature: library-availability-filter, Property 6: pill counts match actual filtered counts
   property(
-    'Property 6: pill counts match actual filtered counts',
+    'Property 6: pill counts match an independent predicate count',
     () {
       forAll(
         _bookListArbitrary(),
@@ -508,12 +528,22 @@ void _propertyTests() {
           // **Validates: Requirements 3.2**
           for (final state in AvailabilityFilterState.values) {
             final filtered = applyAvailabilityFilter(books, state);
-            expect(
-              filtered.length,
-              equals(applyAvailabilityFilter(books, state).length),
-              reason:
-                  'Pill count for $state should equal applyAvailabilityFilter(books, $state).length',
-            );
+            // Independent oracle: recompute expected membership with a
+            // hand-written predicate rather than calling the same function.
+            final expected = books.where((b) {
+              return switch (state) {
+                AvailabilityFilterState.all => true,
+                AvailabilityFilterState.availableOffline =>
+                  b.source == AudiobookSource.local ||
+                      (b.source == AudiobookSource.drive &&
+                          b.audioFiles.isNotEmpty),
+                AvailabilityFilterState.driveOnly =>
+                  b.source == AudiobookSource.drive && b.audioFiles.isEmpty,
+              };
+            }).length;
+            expect(filtered.length, expected,
+                reason:
+                    'Pill count for $state should match the independent predicate count');
           }
         },
         maxExamples: 25,
@@ -521,30 +551,9 @@ void _propertyTests() {
     },
   );
 
-  // Feature: library-availability-filter, Property 7: drive-book pill visibility
-  property(
-    'Property 7: drive-book pill visibility — pills visible iff at least one drive book exists',
-    () {
-      forAll(
-        _bookListArbitrary(),
-        (books) {
-          // **Validates: Requirements 3.4**
-          // The "Available offline" and "Drive only" pills are shown only when
-          // at least one book has source == AudiobookSource.drive.
-          final hasDriveBook = books.any((b) => b.source == AudiobookSource.drive);
-          // The pill visibility predicate used in the UI:
-          final pillsVisible = books.any((b) => b.source == AudiobookSource.drive);
-          expect(
-            pillsVisible,
-            equals(hasDriveBook),
-            reason:
-                'Drive pills should be visible iff at least one book has source == drive',
-          );
-        },
-        maxExamples: 25,
-      );
-    },
-  );
+  // Former Property 7 ("drive-book pill visibility") was a tautology — both
+  // sides of its assertion were the same expression. Deleted; pill visibility
+  // itself lives in widget code and is covered by manual smoke checks.
 }
 
 // Register property tests inside the main test suite

@@ -50,8 +50,6 @@ class _PlayerScreenState extends State<PlayerScreen> {
   // Sleep timer — state lives in the shared controller so it's visible
   // outside this screen (library AppBar, mini-player).
   final SleepTimerController _sleepCtrl = locator<SleepTimerController>();
-  VoidCallback? _sleepListener;
-  VoidCallback? _eocListener;
 
   // Progress slider drag state
   bool _dragging = false;
@@ -102,13 +100,8 @@ class _PlayerScreenState extends State<PlayerScreen> {
         }
       });
 
-      // Rebuild the AppBar timer label when the controller ticks.
-      _sleepListener = () {
-        if (mounted) setState(() {});
-      };
-      _eocListener = _sleepListener;
-      _sleepCtrl.remaining.addListener(_sleepListener!);
-      _sleepCtrl.stopAtChapterEnd.addListener(_eocListener!);
+      // Sleep timer updates are consumed by a scoped ValueListenableBuilder
+      // around the timer chip only (see _bottomRow) — no full-screen rebuilds.
 
       // Error stream → snackbar with retry. `null` clears any banner.
       _errorSub = _audioHandler.errorStream.listen(_onError);
@@ -148,12 +141,6 @@ class _PlayerScreenState extends State<PlayerScreen> {
     _chapterSub?.cancel();
     _posSub?.cancel();
     _errorSub?.cancel();
-    if (_sleepListener != null) {
-      _sleepCtrl.remaining.removeListener(_sleepListener!);
-    }
-    if (_eocListener != null) {
-      _sleepCtrl.stopAtChapterEnd.removeListener(_eocListener!);
-    }
     super.dispose();
   }
 
@@ -625,9 +612,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
                 chapterPosition: _dragging ? _dragPosition : rawPos,
                 chapterDurations: book.chapterDurations,
               );
-              displayed = _dragging
-                  ? Duration(milliseconds: globalMs)
-                  : Duration(milliseconds: globalMs);
+              displayed = Duration(milliseconds: globalMs);
             } else {
               displayed = _dragging ? _dragPosition : rawPos;
             }
@@ -887,23 +872,31 @@ class _PlayerScreenState extends State<PlayerScreen> {
             ),
           ),
         ),
-        // Sleep timer
-        Tooltip(
-          message: 'Sleep timer',
-          child: Semantics(
-            button: true,
-            label: 'Sleep timer: $_timerLabel',
-            excludeSemantics: true,
-            child: GestureDetector(
-              onTap: () => _showSleepTimerSheet(context),
-              child: _chip(
-                icon: Icons.timer_rounded,
-                label: _timerLabel,
-                active: _timerActive,
-                theme: theme,
+        // Sleep timer — listens to the controller directly so the 1 Hz
+        // countdown repaints only this chip, not the whole screen.
+        ValueListenableBuilder<Duration?>(
+          valueListenable: _sleepCtrl.remaining,
+          builder: (context, _, __) =>
+              ValueListenableBuilder<bool>(
+                valueListenable: _sleepCtrl.stopAtChapterEnd,
+                builder: (context, _, __) => Tooltip(
+                  message: 'Sleep timer',
+                  child: Semantics(
+                    button: true,
+                    label: 'Sleep timer: $_timerLabel',
+                    excludeSemantics: true,
+                    child: GestureDetector(
+                      onTap: () => _showSleepTimerSheet(context),
+                      child: _chip(
+                        icon: Icons.timer_rounded,
+                        label: _timerLabel,
+                        active: _timerActive,
+                        theme: theme,
+                      ),
+                    ),
+                  ),
+                ),
               ),
-            ),
-          ),
         ),
       ],
     );

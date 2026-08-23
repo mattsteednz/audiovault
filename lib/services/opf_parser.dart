@@ -54,9 +54,10 @@ OpfMetadata parseOpf(String xmlContent) {
     final doc = XmlDocument.parse(xmlContent);
 
     // Locate the <metadata> element — may be a direct child of <package> or
-    // the root itself in some stripped OPF files.
-    final metadata = doc.findAllElements('metadata').firstOrNull ??
-        doc.findAllElements('dc-metadata').firstOrNull;
+    // the root itself in some stripped OPF files. Matched by local name so
+    // documents using a default namespace (no `dc:`/`opf:` prefixes) parse.
+    final metadata = _allByLocalName(doc, 'metadata').firstOrNull ??
+        _allByLocalName(doc, 'dc-metadata').firstOrNull;
     if (metadata == null) return const OpfMetadata();
 
     String? title;
@@ -73,7 +74,7 @@ OpfMetadata parseOpf(String xmlContent) {
     title = _dcText(metadata, 'title');
 
     // dc:creator — may appear multiple times with different roles
-    for (final el in metadata.findElements('dc:creator')) {
+    for (final el in _byLocalName(metadata, 'creator')) {
       final role = el.getAttribute('opf:role') ??
           el.getAttribute('role') ??
           'aut'; // default role is author when unspecified
@@ -98,7 +99,7 @@ OpfMetadata parseOpf(String xmlContent) {
     }
 
     // Calibre custom meta tags
-    for (final el in metadata.findElements('meta')) {
+    for (final el in _byLocalName(metadata, 'meta')) {
       final name = el.getAttribute('name') ?? '';
       final content = el.getAttribute('content') ?? '';
       if (content.isEmpty) continue;
@@ -127,8 +128,17 @@ OpfMetadata parseOpf(String xmlContent) {
   }
 }
 
+/// All descendant elements whose *local* name matches — ignores namespace
+/// prefixes so both `<dc:title>` and default-namespace `<title>` are found.
+Iterable<XmlElement> _allByLocalName(XmlDocument doc, String localName) =>
+    doc.findAllElements('*').where((e) => e.name.local == localName);
+
+/// Direct element children of [parent] with the given local name.
+Iterable<XmlElement> _byLocalName(XmlElement parent, String localName) =>
+    parent.childElements.where((e) => e.name.local == localName);
+
 String? _dcText(XmlElement metadata, String localName) {
-  final el = metadata.findElements('dc:$localName').firstOrNull;
+  final el = _byLocalName(metadata, localName).firstOrNull;
   if (el == null) return null;
   final text = el.innerText.trim();
   return text.isEmpty ? null : text;

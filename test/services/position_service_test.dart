@@ -310,5 +310,185 @@ void main() {
         expect(statuses['/books/c'], BookStatus.finished);
       });
     });
+
+    group('savePosition preserves explicit status', () {
+      test('saving over a finished row keeps the finished status', () async {
+        final svc = await _makeService();
+        const path = '/books/finished-book';
+        await svc.updateBookStatus(path, BookStatus.finished);
+
+        // A periodic save lands mid-book — far from the finished threshold.
+        await svc.savePosition(
+          bookPath: path,
+          chapterIndex: 2,
+          position: const Duration(minutes: 5),
+          globalPositionMs: 1800000,
+          totalDurationMs: 36000000,
+        );
+
+        expect(await svc.getBookStatus(path), BookStatus.finished,
+            reason:
+                'a position save must never wipe an explicit user-set status');
+      });
+
+      test('saving over a NULL-status row leaves it NULL (derived)', () async {
+        final svc = await _makeService();
+        const path = '/books/derived';
+        await _insert(svc, bookPath: path, updatedAt: 1000,
+            globalPositionMs: 1800000, totalDurationMs: 36000000);
+
+        await svc.savePosition(
+          bookPath: path,
+          chapterIndex: 1,
+          position: const Duration(minutes: 3),
+          globalPositionMs: 2000000,
+          totalDurationMs: 36000000,
+        );
+
+        final db = await svc.databaseForTesting;
+        final rows = await db.query('positions',
+            columns: ['status'],
+            where: 'book_path = ?',
+            whereArgs: [path]);
+        expect(rows.single['status'], isNull);
+        // And derivation still works.
+        expect(await svc.getBookStatus(path), BookStatus.inProgress);
+      });
+
+      test('position columns still update across repeated saves', () async {
+        final svc = await _makeService();
+        const path = '/books/dune';
+        await svc.updateBookStatus(path, BookStatus.finished);
+
+        for (var i = 1; i <= 5; i++) {
+          await svc.savePosition(
+            bookPath: path,
+            chapterIndex: i,
+            position: Duration(minutes: i),
+            globalPositionMs: i * 60000,
+            totalDurationMs: 36000000,
+          );
+        }
+
+        final saved = await svc.getPosition(path);
+        expect(saved!.chapterIndex, 5);
+        expect(saved.position, const Duration(minutes: 5));
+        expect(await svc.getBookStatus(path), BookStatus.finished,
+            reason: 'the interleaved-save loop must not clobber status');
+      });
+
+      test('first save onto an unknown book creates a NULL-status row', () async {
+        final svc = await _makeService();
+        await svc.savePosition(
+          bookPath: '/books/new',
+          chapterIndex: 0,
+          position: Duration.zero,
+          globalPositionMs: 0,
+          totalDurationMs: 1000,
+        );
+        // Zero progress derives notStarted.
+        expect(await svc.getBookStatus('/books/new'), BookStatus.notStarted);
+      });
+    });
+
+    group('repairFromGlobal', () {
+      test('rewrites legacy global-only rows to chapter + offset', () async {
+        final svc = await _makeService();
+        const path = '/books/legacy';
+        final db = await svc.databaseForTesting;
+        await db.insert('positions', {
+          'book_path': path,
+          'chapter_index': 0,
+          'position_ms': 0,
+          'global_position_ms': 25 * 60 * 1000, // 10m ch0 → 15m into ch1
+          'total_duration_ms': 30 * 60 * 1000,
+          'updated_at': 1000,
+        });
+
+        final repaired = await svc.repairFromGlobal(_repairBook(path));
+        expect(repaired, isTrue);
+
+        final saved = await svc.getPosition(path);
+        expect(saved!.chapterIndex, 1);
+        expect(saved.position, const Duration(minutes: 15));
+
+        // global_position_ms must be untouched (status derivation reads it).
+        final row = await db.query('positions',
+            columns: ['global_position_ms'],
+            where: 'book_path = ?',
+            whereArgs: [path]);
+        expect(row.single['global_position_ms'], 25 * 60 * 1000);
+      });
+
+      test('is idempotent and ignores healthy rows', () async {
+        final svc = await _makeService();
+        const path = '/books/healthy';
+        await svc.savePosition(
+          bookPath: path,
+          chapterIndex: 2,
+          position: const Duration(minutes: 4),
+          globalPositionMs: 24 * 60 * 1000,
+          totalDurationMs: 30 * 60 * 1000,
+        );
+
+        expect(await svc.repairFromGlobal(_repairBook(path)), isFalse);
+      });
+
+      test('keeps derived finished status for near-end globals', () async {
+        final svc = await _makeService();
+        const path = '/books/near-end';
+        final db = await svc.databaseForTesting;
+        await db.insert('positions', {
+          'book_path': path,
+          'chapter_index': 0,
+          'position_ms': 0,
+          // 45s before end of a 60m book → within the 60s finished threshold.
+          'global_position_ms': 59 * 60 * 1000 + 15 * 1000,
+          'total_duration_ms': 60 * 60 * 1000,
+          'updated_at': 1000,
+        });
+
+        expect(
+            await svc.getBookStatus(path), BookStatus.finished,
+            reason: 'derivation applies before repair');
+        expect(await svc.repairFromGlobal(_repairBook(path)), isTrue);
+        expect(
+            await svc.getBookStatus(path), BookStatus.finished,
+            reason: 'repair must not disturb derived status');
+      });
+
+      test('skips books without chapter durations', () async {
+        final svc = await _makeService();
+        const path = '/books/no-durations';
+        final db = await svc.databaseForTesting;
+        await db.insert('positions', {
+          'book_path': path,
+          'chapter_index': 0,
+          'position_ms': 0,
+          'global_position_ms': 5000,
+          'total_duration_ms': 60000,
+          'updated_at': 1000,
+        });
+
+        final book = Audiobook(
+          title: 'No durations',
+          path: path,
+          audioFiles: const [],
+          chapterDurations: const [],
+        );
+        expect(await svc.repairFromGlobal(book), isFalse);
+      });
+    });
   });
 }
+
+/// Book fixture with two 10-minute chapters for repair tests.
+Audiobook _repairBook(String path) => Audiobook(
+      title: 'Repair fixture',
+      path: path,
+      audioFiles: const [],
+      chapterDurations: const [
+        Duration(minutes: 10),
+        Duration(minutes: 20),
+      ],
+    );

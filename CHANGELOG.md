@@ -17,9 +17,24 @@ All notable changes to Kōwhai Audiobook Player are documented here.
 - **CI** — Flutter version pinned (3.44.4) with pub caching in both workflows, ending local/CI SDK drift; release APK builds now use the workflow run number as the Android build number so sideload updates always upgrade cleanly.
 - **Repo hygiene** — Removed the stale `assets/lib` app copy and duplicate `.analysis_options.yaml`; unified leftover "AudioVault"/`sbcover` naming to Kōwhai (`KowhaiApp`, `[Kowhai:*]` log tags); added MIT `LICENSE` file.
 - **Tests** — Retired the intentionally-failing exploration suite; its download-prompt gating coverage now lives in the preservation suite as Property 6. Mocks regenerated against current interfaces and the global analyzer suppression removed.
+- **Fonts** — Manrope and Playfair Display are now bundled with the app instead of fetched from Google's font CDN at runtime. First launch is fully offline-safe, renders correctly with no network, makes no unconsented Google network call, and no longer flashes fallback fonts. The `google_fonts` dependency was removed.
+- **Performance** — The mini player's frosted-glass blur surface no longer repaints on every position tick (only the thin progress bar and "x left" label do), and a running sleep timer no longer rebuilds the whole player screen every second — only its chip.
+- **Library** — Grid/list layout choice is remembered between launches, search input is debounced for smoother typing on large libraries, and the metadata-enrichment checkbox on first-run now matches the Settings default.
 
 ### Fixed
+- **Finished status lost on playback** — Books manually marked Finished stayed finished; periodic position saves no longer reset the status you set.
+- **Cross-device restore fidelity** — Synced positions now restore to the exact chapter and offset instead of the start of the book; legacy backups without chapter data are repaired automatically the first time the book is opened.
+- **Cast switching** — Loading a different book while casting now resumes it from its own saved position (previously it could start at the previous book's playback point), and a dying receiver can no longer overwrite good progress with 0:00.
+- **Cast teardown** — Stopping playback during Cast now reliably ends the streaming server and saves the last known receiver position.
+- **Privacy** — Revoking analytics consent in Settings now also uninstalls the crash-reporting handlers, and no telemetry events can fire before consent is granted. Cast streaming no longer logs the session token, and its server binds to the LAN interface instead of all interfaces (also fixing a rare stuck-streaming-server after rapid reconnects).
+- **Changelog accuracy** — Corrected two historical release dates against git tag history ([1.5.0] and [1.2.0]).
 - **Test environment** — A stale shader build cache caused a false-positive failure in the download-prompt preservation suite; resolved by `flutter clean` and guarded against recurrence by pinning CI's Flutter version.
+- **Download cancellation** — Cancelling a download during its between-retries window no longer resurrects the cancelled file, and cancelling an idle queue no longer silently disables retries for that book's next attempt.
+- **Startup recovery** — A single unreadable leftover download file no longer blocks app launch, and files whose expected size was never recorded are no longer deleted during crash recovery.
+- **Drive folder names** — Folder and file names coming from Google Drive are sanitised before being used as filesystem paths, so names containing `/`, `\`, or traversal segments can no longer escape the library folder (they also no longer break scanning or downloads).
+- **Scan errors** — An unreadable library root is now logged and rethrown so the UI can show its retryable error message consistently.
+- **M4B chapters** — Chapters stored under the standard `meta` FullBox header (common in iTunes-style files) are now found; out-of-order chapter tables are sorted chronologically, and chapter lookup is now a binary search.
+- **OPF metadata** — `metadata.opf` files that declare Dublin Core as the default namespace (no `dc:` prefixes) now parse instead of silently yielding empty metadata.
 
 ---
 
@@ -154,7 +169,7 @@ All notable changes to Kōwhai Audiobook Player are documented here.
 
 ---
 
-## [1.5.0] — 2026-06-01
+## [1.5.0] - 2026-04-20
 
 ### Added
 
@@ -248,7 +263,7 @@ All notable changes to Kōwhai Audiobook Player are documented here.
 
 ---
 
-## [1.2.0] — 2026-05-01
+## [1.2.0] - 2026-04-12
 
 ### Added
 

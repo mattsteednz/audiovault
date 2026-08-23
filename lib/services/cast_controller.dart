@@ -38,6 +38,11 @@ class CastController {
   String? _baseUrl;
   bool _casting = false;
 
+  /// Last non-zero position reported by the receiver. Used as the source of
+  /// truth for the final save + local seek-back on teardown — reading the
+  /// receiver during session death is exactly when reads fail or return 0.
+  Duration? _lastReceiverPosition;
+
   bool get isCasting => _casting;
 
   final _castingController = StreamController<bool>.broadcast();
@@ -69,6 +74,8 @@ class CastController {
 
     _casting = true;
     _castingController.add(true);
+    // A previous session's position must never leak into this one.
+    _lastReceiverPosition = null;
 
     final wasPlaying = localPlayer.playing;
     final position = localPlayer.position;
@@ -100,8 +107,10 @@ class CastController {
     _statusSub = client.mediaStatusStream.listen((status) {
       if (status != null) onStatusChanged(status);
     });
-    _positionSub =
-        client.playerPositionStream.listen(onEffectivePosition);
+    _positionSub = client.playerPositionStream.listen((p) {
+      if (p > Duration.zero) _lastReceiverPosition = p;
+      onEffectivePosition(p);
+    });
 
     persister.stopPeriodic();
     persister.startPeriodic();
@@ -180,15 +189,39 @@ class CastController {
     }
   }
 
-  /// Tear down Cast session and resume local playback at the last known
-  /// Cast position.
+  /// Tear down the Cast session and resume local playback at the last
+  /// receiver-known position.
+  ///
+  /// Position fidelity rules (prd-48 J3):
+  /// * the final save uses the cached stream position, never a live read —
+  ///   receiver reads during teardown/death fail or return zero, and a zero
+  ///   fallback could overwrite good progress;
+  /// * with no cached position there is NO final save (periodic ticks ≤5 s
+  ///   old already captured progress) and NO seek — the local player stays
+  ///   parked at its handoff position, which beats rewinding to 0:00;
+  /// * `_casting` is cleared in every path so a failed server stop can never
+  ///   wedge the controller in casting state.
   Future<void> stop() async {
     if (!_casting) return;
 
-    Duration castPosition = Duration.zero;
+    final book = getBook();
+    final cached = _lastReceiverPosition;
+
     try {
-      castPosition = GoogleCastRemoteMediaClient.instance.playerPosition;
-    } catch (_) {}
+      if (book != null && cached != null) {
+        // The local player still holds the casted book's playlist, so its
+        // currentIndex shares the receiver's per-file coordinate space.
+        await persister.saveSnapshot(
+          book: book,
+          snap: (
+            chapterIndex: localPlayer.currentIndex ?? 0,
+            position: cached,
+          ),
+        );
+      }
+    } catch (e) {
+      debugPrint('[Kowhai:Cast] final position save failed: $e');
+    }
 
     await _statusSub?.cancel();
     await _positionSub?.cancel();
@@ -196,18 +229,29 @@ class CastController {
     _positionSub = null;
     persister.stopPeriodic();
 
-    await _server.stop();
+    try {
+      await _server.stop();
+    } catch (e) {
+      debugPrint('[Kowhai:Cast] server stop failed: $e');
+    }
     TelemetryService.logEvent('cast_stop');
 
     _casting = false;
     _castingController.add(false);
 
-    final book = getBook();
-    if (book != null) {
-      await localPlayer.seek(castPosition);
-      onEffectivePosition(localPlayer.position);
+    if (book != null && cached != null) {
+      // Bounded post-seek handshake: just_audio's position getter can lag an
+      // awaited seek via the event channel, so emit from the first stream
+      // event after the seek rather than the (possibly pre-seek) getter.
+      await localPlayer.seek(cached);
       onEffectiveDuration(localPlayer.duration);
+      final p = await localPlayer.positionStream.first.timeout(
+        const Duration(milliseconds: 250),
+        onTimeout: () => localPlayer.position,
+      );
+      onEffectivePosition(p);
     }
+    _lastReceiverPosition = null;
   }
 
   /// True if a Cast session is currently connected (regardless of our

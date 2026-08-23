@@ -14,6 +14,30 @@ int calculateGlobalPosition({
   return offset + chapterPosition.inMilliseconds;
 }
 
+/// Inverse of [calculateGlobalPosition]: maps a book-wide elapsed position
+/// back to a (chapterIndex, offset-within-chapter) pair.
+///
+/// Overshoot past the last chapter clamps to the end of the final chapter.
+/// With an empty [chapterDurations] list the whole offset lands on chapter 0
+/// (mirroring calculateGlobalPosition's fallback). Durations that changed
+/// between export and import make the remap approximate by nature.
+({int chapterIndex, Duration position}) globalToChapterPosition(
+    int globalMs, List<Duration> chapterDurations) {
+  if (globalMs <= 0) return (chapterIndex: 0, position: Duration.zero);
+  var remaining = globalMs;
+  for (int i = 0; i < chapterDurations.length; i++) {
+    final len = chapterDurations[i].inMilliseconds;
+    if (remaining < len || i == chapterDurations.length - 1) {
+      // Clamp to the chapter length so overshoot (stale/changed durations,
+      // truncated re-encodes) never seeks past the file's end on resume.
+      final posMs = len > 0 && remaining > len ? len : remaining;
+      return (chapterIndex: i, position: Duration(milliseconds: posMs));
+    }
+    remaining -= len;
+  }
+  return (chapterIndex: 0, position: Duration(milliseconds: globalMs));
+}
+
 /// Human-readable byte size string (B / KB / MB / GB).
 String formatBytes(int bytes) {
   if (bytes < 1024) return '$bytes B';

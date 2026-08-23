@@ -1,16 +1,23 @@
 import 'package:flutter/material.dart';
-import 'package:google_fonts/google_fonts.dart';
 
-/// Creates the app's [TextTheme] using Google Fonts.
+/// Font family constants — bundled TTFs (see pubspec `flutter: fonts`).
+/// Bundling avoids a runtime fetch to Google's CDN on first launch
+/// (offline-safe, GDPR-clean, no first-frame font swap).
+const _kBodyFontFamily = 'Manrope';
+const _kDisplayFontFamily = 'Playfair Display';
+
+/// Creates the app's [TextTheme] using the bundled Google Fonts.
 ///
 /// Body text uses Manrope; display/headline text uses Playfair Display.
 /// Does not require a [BuildContext] — safe to call when constructing the
 /// root [MaterialApp] theme before any [Theme] ancestor exists.
 TextTheme createTextTheme() {
-  // Start from the M3 typography baseline, then overlay the two fonts.
-  const base = TextTheme();
-  final body = GoogleFonts.manropeTextTheme(base);
-  final display = GoogleFonts.playfairDisplayTextTheme(base);
+  // Start from the M3 typography baseline (2021 spec), then swap families.
+  final base = Typography.material2021().black;
+  TextTheme withFamily(TextTheme t, String family) =>
+      t.apply(fontFamily: family);
+  final body = withFamily(base, _kBodyFontFamily);
+  final display = withFamily(base, _kDisplayFontFamily);
   return display.copyWith(
     bodyLarge: body.bodyLarge,
     bodyMedium: body.bodyMedium,

@@ -31,13 +31,17 @@ flutter run
 
 ## Firebase / Telemetry Setup
 
-Config files (`android/app/google-services.json`, `ios/Runner/GoogleService-Info.plist`) are not included in the repository. To fork:
+The Firebase configuration files **are committed** (`android/app/google-services.json`, `ios/Runner/GoogleService-Info.plist`, `lib/firebase_options.dart`) and contain this project's client API keys. These keys are public identifiers by design — Firebase secures them via package-name/bundle-ID restrictions and (optionally) App Check, not secrecy. They are committed so release builds work from CI without extra secret plumbing.
+
+To fork with your own Firebase project:
 
 1. Create a Firebase project at [console.firebase.google.com](https://console.firebase.google.com)
-2. Register Android and iOS apps with your own package identifier
+2. Register Android (`com.mattsteed.kowhai`) and iOS apps with your own identifiers
 3. Run `flutterfire configure --project=<your-project-id>`
+4. Replace the three config files above with your generated ones
+5. In your Firebase console, enforce API-key restrictions (Android/iOS app restrictions) and consider enabling App Check
 
-The app runs without telemetry if no valid config is present.
+Telemetry is consent-gated: the app asks before any analytics or crash reporting, works fully without valid config, and uninstalls its crash handlers if consent is revoked.
 
 ## Tech Stack
 

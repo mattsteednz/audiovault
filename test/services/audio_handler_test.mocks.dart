@@ -3,14 +3,17 @@
 // Do not manually edit this file.
 
 // ignore_for_file: no_leading_underscores_for_library_prefixes
-import 'dart:async' as _i6;
+import 'dart:async' as _i7;
 
-import 'package:kowhai/models/audiobook.dart' as _i7;
-import 'package:kowhai/models/availability_filter_state.dart' as _i8;
+import 'package:audio_session/audio_session.dart' as _i11;
+import 'package:just_audio/just_audio.dart' as _i5;
+import 'package:kowhai/models/audiobook.dart' as _i8;
+import 'package:kowhai/models/availability_filter_state.dart' as _i9;
 import 'package:kowhai/models/bookmark.dart' as _i3;
-import 'package:kowhai/services/position_service.dart' as _i5;
+import 'package:kowhai/services/position_service.dart' as _i6;
 import 'package:kowhai/services/preferences_service.dart' as _i4;
 import 'package:mockito/mockito.dart' as _i1;
+import 'package:mockito/src/dummies.dart' as _i10;
 import 'package:sqflite/sqflite.dart' as _i2;
 
 // ignore_for_file: type=lint
@@ -59,34 +62,84 @@ class _FakeSettingsSnapshot_2 extends _i1.SmartFake
         );
 }
 
+class _FakePlayerEvent_3 extends _i1.SmartFake implements _i5.PlayerEvent {
+  _FakePlayerEvent_3(
+    Object parent,
+    Invocation parentInvocation,
+  ) : super(
+          parent,
+          parentInvocation,
+        );
+}
+
+class _FakePlaybackEvent_4 extends _i1.SmartFake implements _i5.PlaybackEvent {
+  _FakePlaybackEvent_4(
+    Object parent,
+    Invocation parentInvocation,
+  ) : super(
+          parent,
+          parentInvocation,
+        );
+}
+
+class _FakeDuration_5 extends _i1.SmartFake implements Duration {
+  _FakeDuration_5(
+    Object parent,
+    Invocation parentInvocation,
+  ) : super(
+          parent,
+          parentInvocation,
+        );
+}
+
+class _FakePlayerState_6 extends _i1.SmartFake implements _i5.PlayerState {
+  _FakePlayerState_6(
+    Object parent,
+    Invocation parentInvocation,
+  ) : super(
+          parent,
+          parentInvocation,
+        );
+}
+
+class _FakeSequenceState_7 extends _i1.SmartFake implements _i5.SequenceState {
+  _FakeSequenceState_7(
+    Object parent,
+    Invocation parentInvocation,
+  ) : super(
+          parent,
+          parentInvocation,
+        );
+}
+
 /// A class which mocks [PositionService].
 ///
 /// See the documentation for Mockito's code generation for more information.
-class MockPositionService extends _i1.Mock implements _i5.PositionService {
+class MockPositionService extends _i1.Mock implements _i6.PositionService {
   MockPositionService() {
     _i1.throwOnMissingStub(this);
   }
 
   @override
-  _i6.Future<_i2.Database> get databaseForTesting => (super.noSuchMethod(
+  _i7.Future<_i2.Database> get databaseForTesting => (super.noSuchMethod(
         Invocation.getter(#databaseForTesting),
-        returnValue: _i6.Future<_i2.Database>.value(_FakeDatabase_0(
+        returnValue: _i7.Future<_i2.Database>.value(_FakeDatabase_0(
           this,
           Invocation.getter(#databaseForTesting),
         )),
-      ) as _i6.Future<_i2.Database>);
+      ) as _i7.Future<_i2.Database>);
 
   @override
-  _i6.Future<_i2.Database> get sharedDb => (super.noSuchMethod(
+  _i7.Future<_i2.Database> get sharedDb => (super.noSuchMethod(
         Invocation.getter(#sharedDb),
-        returnValue: _i6.Future<_i2.Database>.value(_FakeDatabase_0(
+        returnValue: _i7.Future<_i2.Database>.value(_FakeDatabase_0(
           this,
           Invocation.getter(#sharedDb),
         )),
-      ) as _i6.Future<_i2.Database>);
+      ) as _i7.Future<_i2.Database>);
 
   @override
-  _i6.Future<void> savePosition({
+  _i7.Future<void> savePosition({
     required String? bookPath,
     required int? chapterIndex,
     required Duration? position,
@@ -105,12 +158,21 @@ class MockPositionService extends _i1.Mock implements _i5.PositionService {
             #totalDurationMs: totalDurationMs,
           },
         ),
-        returnValue: _i6.Future<void>.value(),
-        returnValueForMissingStub: _i6.Future<void>.value(),
-      ) as _i6.Future<void>);
+        returnValue: _i7.Future<void>.value(),
+        returnValueForMissingStub: _i7.Future<void>.value(),
+      ) as _i7.Future<void>);
 
   @override
-  _i6.Future<({int chapterIndex, Duration position})?> getPosition(
+  _i7.Future<bool> repairFromGlobal(_i8.Audiobook? book) => (super.noSuchMethod(
+        Invocation.method(
+          #repairFromGlobal,
+          [book],
+        ),
+        returnValue: _i7.Future<bool>.value(false),
+      ) as _i7.Future<bool>);
+
+  @override
+  _i7.Future<({int chapterIndex, Duration position})?> getPosition(
           String? bookPath) =>
       (super.noSuchMethod(
         Invocation.method(
@@ -118,13 +180,13 @@ class MockPositionService extends _i1.Mock implements _i5.PositionService {
           [bookPath],
         ),
         returnValue:
-            _i6.Future<({int chapterIndex, Duration position})?>.value(),
-      ) as _i6.Future<({int chapterIndex, Duration position})?>);
+            _i7.Future<({int chapterIndex, Duration position})?>.value(),
+      ) as _i7.Future<({int chapterIndex, Duration position})?>);
 
   @override
-  _i6.Future<void> setBookStatus(
+  _i7.Future<void> setBookStatus(
     String? bookPath,
-    _i7.BookStatus? status,
+    _i8.BookStatus? status,
   ) =>
       (super.noSuchMethod(
         Invocation.method(
@@ -134,14 +196,14 @@ class MockPositionService extends _i1.Mock implements _i5.PositionService {
             status,
           ],
         ),
-        returnValue: _i6.Future<void>.value(),
-        returnValueForMissingStub: _i6.Future<void>.value(),
-      ) as _i6.Future<void>);
+        returnValue: _i7.Future<void>.value(),
+        returnValueForMissingStub: _i7.Future<void>.value(),
+      ) as _i7.Future<void>);
 
   @override
-  _i6.Future<void> updateBookStatus(
+  _i7.Future<void> updateBookStatus(
     String? bookPath,
-    _i7.BookStatus? status,
+    _i8.BookStatus? status,
   ) =>
       (super.noSuchMethod(
         Invocation.method(
@@ -151,70 +213,70 @@ class MockPositionService extends _i1.Mock implements _i5.PositionService {
             status,
           ],
         ),
-        returnValue: _i6.Future<void>.value(),
-        returnValueForMissingStub: _i6.Future<void>.value(),
-      ) as _i6.Future<void>);
+        returnValue: _i7.Future<void>.value(),
+        returnValueForMissingStub: _i7.Future<void>.value(),
+      ) as _i7.Future<void>);
 
   @override
-  _i6.Future<_i7.BookStatus> getBookStatus(String? bookPath) =>
+  _i7.Future<_i8.BookStatus> getBookStatus(String? bookPath) =>
       (super.noSuchMethod(
         Invocation.method(
           #getBookStatus,
           [bookPath],
         ),
         returnValue:
-            _i6.Future<_i7.BookStatus>.value(_i7.BookStatus.notStarted),
-      ) as _i6.Future<_i7.BookStatus>);
+            _i7.Future<_i8.BookStatus>.value(_i8.BookStatus.notStarted),
+      ) as _i7.Future<_i8.BookStatus>);
 
   @override
-  _i6.Future<Map<String, _i7.BookStatus>> getAllStatuses() =>
+  _i7.Future<Map<String, _i8.BookStatus>> getAllStatuses() =>
       (super.noSuchMethod(
         Invocation.method(
           #getAllStatuses,
           [],
         ),
-        returnValue: _i6.Future<Map<String, _i7.BookStatus>>.value(
-            <String, _i7.BookStatus>{}),
-      ) as _i6.Future<Map<String, _i7.BookStatus>>);
+        returnValue: _i7.Future<Map<String, _i8.BookStatus>>.value(
+            <String, _i8.BookStatus>{}),
+      ) as _i7.Future<Map<String, _i8.BookStatus>>);
 
   @override
-  _i6.Future<_i3.Bookmark> addBookmark(_i3.Bookmark? bookmark) =>
+  _i7.Future<_i3.Bookmark> addBookmark(_i3.Bookmark? bookmark) =>
       (super.noSuchMethod(
         Invocation.method(
           #addBookmark,
           [bookmark],
         ),
-        returnValue: _i6.Future<_i3.Bookmark>.value(_FakeBookmark_1(
+        returnValue: _i7.Future<_i3.Bookmark>.value(_FakeBookmark_1(
           this,
           Invocation.method(
             #addBookmark,
             [bookmark],
           ),
         )),
-      ) as _i6.Future<_i3.Bookmark>);
+      ) as _i7.Future<_i3.Bookmark>);
 
   @override
-  _i6.Future<List<_i3.Bookmark>> getBookmarks(String? bookPath) =>
+  _i7.Future<List<_i3.Bookmark>> getBookmarks(String? bookPath) =>
       (super.noSuchMethod(
         Invocation.method(
           #getBookmarks,
           [bookPath],
         ),
-        returnValue: _i6.Future<List<_i3.Bookmark>>.value(<_i3.Bookmark>[]),
-      ) as _i6.Future<List<_i3.Bookmark>>);
+        returnValue: _i7.Future<List<_i3.Bookmark>>.value(<_i3.Bookmark>[]),
+      ) as _i7.Future<List<_i3.Bookmark>>);
 
   @override
-  _i6.Future<void> deleteBookmark(int? id) => (super.noSuchMethod(
+  _i7.Future<void> deleteBookmark(int? id) => (super.noSuchMethod(
         Invocation.method(
           #deleteBookmark,
           [id],
         ),
-        returnValue: _i6.Future<void>.value(),
-        returnValueForMissingStub: _i6.Future<void>.value(),
-      ) as _i6.Future<void>);
+        returnValue: _i7.Future<void>.value(),
+        returnValueForMissingStub: _i7.Future<void>.value(),
+      ) as _i7.Future<void>);
 
   @override
-  _i6.Future<void> updateBookmark(
+  _i7.Future<void> updateBookmark(
     int? id, {
     required String? label,
     String? notes,
@@ -228,25 +290,27 @@ class MockPositionService extends _i1.Mock implements _i5.PositionService {
             #notes: notes,
           },
         ),
-        returnValue: _i6.Future<void>.value(),
-        returnValueForMissingStub: _i6.Future<void>.value(),
-      ) as _i6.Future<void>);
+        returnValue: _i7.Future<void>.value(),
+        returnValueForMissingStub: _i7.Future<void>.value(),
+      ) as _i7.Future<void>);
 
   @override
-  _i6.Future<String?> getLastPlayedBookPath() => (super.noSuchMethod(
+  _i7.Future<String?> getLastPlayedBookPath() => (super.noSuchMethod(
         Invocation.method(
           #getLastPlayedBookPath,
           [],
         ),
-        returnValue: _i6.Future<String?>.value(),
-      ) as _i6.Future<String?>);
+        returnValue: _i7.Future<String?>.value(),
+      ) as _i7.Future<String?>);
 
   @override
-  _i6.Future<
+  _i7.Future<
       List<
           ({
             String bookPath,
+            int chapterIndex,
             int globalPositionMs,
+            int positionMs,
             int totalDurationMs,
             int updatedAt
           })>> getAllPositions() => (super.noSuchMethod(
@@ -254,24 +318,30 @@ class MockPositionService extends _i1.Mock implements _i5.PositionService {
           #getAllPositions,
           [],
         ),
-        returnValue: _i6.Future<
+        returnValue: _i7.Future<
             List<
                 ({
                   String bookPath,
+                  int chapterIndex,
                   int globalPositionMs,
+                  int positionMs,
                   int totalDurationMs,
                   int updatedAt
                 })>>.value(<({
           String bookPath,
+          int chapterIndex,
           int globalPositionMs,
+          int positionMs,
           int totalDurationMs,
           int updatedAt
         })>[]),
-      ) as _i6.Future<
+      ) as _i7.Future<
           List<
               ({
                 String bookPath,
+                int chapterIndex,
                 int globalPositionMs,
+                int positionMs,
                 int totalDurationMs,
                 int updatedAt
               })>>);
@@ -287,177 +357,177 @@ class MockPreferencesService extends _i1.Mock
   }
 
   @override
-  _i6.Future<_i4.SettingsSnapshot> getSettingsSnapshot() => (super.noSuchMethod(
+  _i7.Future<_i4.SettingsSnapshot> getSettingsSnapshot() => (super.noSuchMethod(
         Invocation.method(
           #getSettingsSnapshot,
           [],
         ),
         returnValue:
-            _i6.Future<_i4.SettingsSnapshot>.value(_FakeSettingsSnapshot_2(
+            _i7.Future<_i4.SettingsSnapshot>.value(_FakeSettingsSnapshot_2(
           this,
           Invocation.method(
             #getSettingsSnapshot,
             [],
           ),
         )),
-      ) as _i6.Future<_i4.SettingsSnapshot>);
+      ) as _i7.Future<_i4.SettingsSnapshot>);
 
   @override
-  _i6.Future<String?> getLibraryPath() => (super.noSuchMethod(
+  _i7.Future<String?> getLibraryPath() => (super.noSuchMethod(
         Invocation.method(
           #getLibraryPath,
           [],
         ),
-        returnValue: _i6.Future<String?>.value(),
-      ) as _i6.Future<String?>);
+        returnValue: _i7.Future<String?>.value(),
+      ) as _i7.Future<String?>);
 
   @override
-  _i6.Future<void> setLibraryPath(String? path) => (super.noSuchMethod(
+  _i7.Future<void> setLibraryPath(String? path) => (super.noSuchMethod(
         Invocation.method(
           #setLibraryPath,
           [path],
         ),
-        returnValue: _i6.Future<void>.value(),
-        returnValueForMissingStub: _i6.Future<void>.value(),
-      ) as _i6.Future<void>);
+        returnValue: _i7.Future<void>.value(),
+        returnValueForMissingStub: _i7.Future<void>.value(),
+      ) as _i7.Future<void>);
 
   @override
-  _i6.Future<void> clearLibraryPath() => (super.noSuchMethod(
+  _i7.Future<void> clearLibraryPath() => (super.noSuchMethod(
         Invocation.method(
           #clearLibraryPath,
           [],
         ),
-        returnValue: _i6.Future<void>.value(),
-        returnValueForMissingStub: _i6.Future<void>.value(),
-      ) as _i6.Future<void>);
+        returnValue: _i7.Future<void>.value(),
+        returnValueForMissingStub: _i7.Future<void>.value(),
+      ) as _i7.Future<void>);
 
   @override
-  _i6.Future<bool?> getAnalyticsConsent() => (super.noSuchMethod(
+  _i7.Future<bool?> getAnalyticsConsent() => (super.noSuchMethod(
         Invocation.method(
           #getAnalyticsConsent,
           [],
         ),
-        returnValue: _i6.Future<bool?>.value(),
-      ) as _i6.Future<bool?>);
+        returnValue: _i7.Future<bool?>.value(),
+      ) as _i7.Future<bool?>);
 
   @override
-  _i6.Future<void> setAnalyticsConsent(bool? value) => (super.noSuchMethod(
+  _i7.Future<void> setAnalyticsConsent(bool? value) => (super.noSuchMethod(
         Invocation.method(
           #setAnalyticsConsent,
           [value],
         ),
-        returnValue: _i6.Future<void>.value(),
-        returnValueForMissingStub: _i6.Future<void>.value(),
-      ) as _i6.Future<void>);
+        returnValue: _i7.Future<void>.value(),
+        returnValueForMissingStub: _i7.Future<void>.value(),
+      ) as _i7.Future<void>);
 
   @override
-  _i6.Future<String?> getThemeMode() => (super.noSuchMethod(
+  _i7.Future<String?> getThemeMode() => (super.noSuchMethod(
         Invocation.method(
           #getThemeMode,
           [],
         ),
-        returnValue: _i6.Future<String?>.value(),
-      ) as _i6.Future<String?>);
+        returnValue: _i7.Future<String?>.value(),
+      ) as _i7.Future<String?>);
 
   @override
-  _i6.Future<void> setThemeMode(String? value) => (super.noSuchMethod(
+  _i7.Future<void> setThemeMode(String? value) => (super.noSuchMethod(
         Invocation.method(
           #setThemeMode,
           [value],
         ),
-        returnValue: _i6.Future<void>.value(),
-        returnValueForMissingStub: _i6.Future<void>.value(),
-      ) as _i6.Future<void>);
+        returnValue: _i7.Future<void>.value(),
+        returnValueForMissingStub: _i7.Future<void>.value(),
+      ) as _i7.Future<void>);
 
   @override
-  _i6.Future<bool> getMetadataEnrichment() => (super.noSuchMethod(
+  _i7.Future<bool> getMetadataEnrichment() => (super.noSuchMethod(
         Invocation.method(
           #getMetadataEnrichment,
           [],
         ),
-        returnValue: _i6.Future<bool>.value(false),
-      ) as _i6.Future<bool>);
+        returnValue: _i7.Future<bool>.value(false),
+      ) as _i7.Future<bool>);
 
   @override
-  _i6.Future<void> setMetadataEnrichment(bool? value) => (super.noSuchMethod(
+  _i7.Future<void> setMetadataEnrichment(bool? value) => (super.noSuchMethod(
         Invocation.method(
           #setMetadataEnrichment,
           [value],
         ),
-        returnValue: _i6.Future<void>.value(),
-        returnValueForMissingStub: _i6.Future<void>.value(),
-      ) as _i6.Future<void>);
+        returnValue: _i7.Future<void>.value(),
+        returnValueForMissingStub: _i7.Future<void>.value(),
+      ) as _i7.Future<void>);
 
   @override
-  _i6.Future<bool> getAutoRewind() => (super.noSuchMethod(
+  _i7.Future<bool> getAutoRewind() => (super.noSuchMethod(
         Invocation.method(
           #getAutoRewind,
           [],
         ),
-        returnValue: _i6.Future<bool>.value(false),
-      ) as _i6.Future<bool>);
+        returnValue: _i7.Future<bool>.value(false),
+      ) as _i7.Future<bool>);
 
   @override
-  _i6.Future<void> setAutoRewind(bool? value) => (super.noSuchMethod(
+  _i7.Future<void> setAutoRewind(bool? value) => (super.noSuchMethod(
         Invocation.method(
           #setAutoRewind,
           [value],
         ),
-        returnValue: _i6.Future<void>.value(),
-        returnValueForMissingStub: _i6.Future<void>.value(),
-      ) as _i6.Future<void>);
+        returnValue: _i7.Future<void>.value(),
+        returnValueForMissingStub: _i7.Future<void>.value(),
+      ) as _i7.Future<void>);
 
   @override
-  _i6.Future<int> getSkipInterval() => (super.noSuchMethod(
+  _i7.Future<int> getSkipInterval() => (super.noSuchMethod(
         Invocation.method(
           #getSkipInterval,
           [],
         ),
-        returnValue: _i6.Future<int>.value(0),
-      ) as _i6.Future<int>);
+        returnValue: _i7.Future<int>.value(0),
+      ) as _i7.Future<int>);
 
   @override
-  _i6.Future<void> setSkipInterval(int? seconds) => (super.noSuchMethod(
+  _i7.Future<void> setSkipInterval(int? seconds) => (super.noSuchMethod(
         Invocation.method(
           #setSkipInterval,
           [seconds],
         ),
-        returnValue: _i6.Future<void>.value(),
-        returnValueForMissingStub: _i6.Future<void>.value(),
-      ) as _i6.Future<void>);
+        returnValue: _i7.Future<void>.value(),
+        returnValueForMissingStub: _i7.Future<void>.value(),
+      ) as _i7.Future<void>);
 
   @override
-  _i6.Future<String?> getLibrarySort() => (super.noSuchMethod(
+  _i7.Future<String?> getLibrarySort() => (super.noSuchMethod(
         Invocation.method(
           #getLibrarySort,
           [],
         ),
-        returnValue: _i6.Future<String?>.value(),
-      ) as _i6.Future<String?>);
+        returnValue: _i7.Future<String?>.value(),
+      ) as _i7.Future<String?>);
 
   @override
-  _i6.Future<void> setLibrarySort(String? value) => (super.noSuchMethod(
+  _i7.Future<void> setLibrarySort(String? value) => (super.noSuchMethod(
         Invocation.method(
           #setLibrarySort,
           [value],
         ),
-        returnValue: _i6.Future<void>.value(),
-        returnValueForMissingStub: _i6.Future<void>.value(),
-      ) as _i6.Future<void>);
+        returnValue: _i7.Future<void>.value(),
+        returnValueForMissingStub: _i7.Future<void>.value(),
+      ) as _i7.Future<void>);
 
   @override
-  _i6.Future<({String id, bool isShared, String name})?> getDriveRootFolder() =>
+  _i7.Future<({String id, bool isShared, String name})?> getDriveRootFolder() =>
       (super.noSuchMethod(
         Invocation.method(
           #getDriveRootFolder,
           [],
         ),
         returnValue:
-            _i6.Future<({String id, bool isShared, String name})?>.value(),
-      ) as _i6.Future<({String id, bool isShared, String name})?>);
+            _i7.Future<({String id, bool isShared, String name})?>.value(),
+      ) as _i7.Future<({String id, bool isShared, String name})?>);
 
   @override
-  _i6.Future<void> setDriveRootFolder(
+  _i7.Future<void> setDriveRootFolder(
     String? id,
     String? name, {
     bool? isShared = false,
@@ -471,89 +541,89 @@ class MockPreferencesService extends _i1.Mock
           ],
           {#isShared: isShared},
         ),
-        returnValue: _i6.Future<void>.value(),
-        returnValueForMissingStub: _i6.Future<void>.value(),
-      ) as _i6.Future<void>);
+        returnValue: _i7.Future<void>.value(),
+        returnValueForMissingStub: _i7.Future<void>.value(),
+      ) as _i7.Future<void>);
 
   @override
-  _i6.Future<void> clearDriveRootFolder() => (super.noSuchMethod(
+  _i7.Future<void> clearDriveRootFolder() => (super.noSuchMethod(
         Invocation.method(
           #clearDriveRootFolder,
           [],
         ),
-        returnValue: _i6.Future<void>.value(),
-        returnValueForMissingStub: _i6.Future<void>.value(),
-      ) as _i6.Future<void>);
+        returnValue: _i7.Future<void>.value(),
+        returnValueForMissingStub: _i7.Future<void>.value(),
+      ) as _i7.Future<void>);
 
   @override
-  _i6.Future<bool> getRemoveWhenFinished() => (super.noSuchMethod(
+  _i7.Future<bool> getRemoveWhenFinished() => (super.noSuchMethod(
         Invocation.method(
           #getRemoveWhenFinished,
           [],
         ),
-        returnValue: _i6.Future<bool>.value(false),
-      ) as _i6.Future<bool>);
+        returnValue: _i7.Future<bool>.value(false),
+      ) as _i7.Future<bool>);
 
   @override
-  _i6.Future<void> setRemoveWhenFinished(bool? value) => (super.noSuchMethod(
+  _i7.Future<void> setRemoveWhenFinished(bool? value) => (super.noSuchMethod(
         Invocation.method(
           #setRemoveWhenFinished,
           [value],
         ),
-        returnValue: _i6.Future<void>.value(),
-        returnValueForMissingStub: _i6.Future<void>.value(),
-      ) as _i6.Future<void>);
+        returnValue: _i7.Future<void>.value(),
+        returnValueForMissingStub: _i7.Future<void>.value(),
+      ) as _i7.Future<void>);
 
   @override
-  _i6.Future<bool> getRefreshOnStartup() => (super.noSuchMethod(
+  _i7.Future<bool> getRefreshOnStartup() => (super.noSuchMethod(
         Invocation.method(
           #getRefreshOnStartup,
           [],
         ),
-        returnValue: _i6.Future<bool>.value(false),
-      ) as _i6.Future<bool>);
+        returnValue: _i7.Future<bool>.value(false),
+      ) as _i7.Future<bool>);
 
   @override
-  _i6.Future<void> setRefreshOnStartup(bool? value) => (super.noSuchMethod(
+  _i7.Future<void> setRefreshOnStartup(bool? value) => (super.noSuchMethod(
         Invocation.method(
           #setRefreshOnStartup,
           [value],
         ),
-        returnValue: _i6.Future<void>.value(),
-        returnValueForMissingStub: _i6.Future<void>.value(),
-      ) as _i6.Future<void>);
+        returnValue: _i7.Future<void>.value(),
+        returnValueForMissingStub: _i7.Future<void>.value(),
+      ) as _i7.Future<void>);
 
   @override
-  _i6.Future<bool> getDriveProgressSync() => (super.noSuchMethod(
+  _i7.Future<bool> getDriveProgressSync() => (super.noSuchMethod(
         Invocation.method(
           #getDriveProgressSync,
           [],
         ),
-        returnValue: _i6.Future<bool>.value(false),
-      ) as _i6.Future<bool>);
+        returnValue: _i7.Future<bool>.value(false),
+      ) as _i7.Future<bool>);
 
   @override
-  _i6.Future<void> setDriveProgressSync(bool? value) => (super.noSuchMethod(
+  _i7.Future<void> setDriveProgressSync(bool? value) => (super.noSuchMethod(
         Invocation.method(
           #setDriveProgressSync,
           [value],
         ),
-        returnValue: _i6.Future<void>.value(),
-        returnValueForMissingStub: _i6.Future<void>.value(),
-      ) as _i6.Future<void>);
+        returnValue: _i7.Future<void>.value(),
+        returnValueForMissingStub: _i7.Future<void>.value(),
+      ) as _i7.Future<void>);
 
   @override
-  _i6.Future<({String id, String name})?> getDriveBackupFolder() =>
+  _i7.Future<({String id, String name})?> getDriveBackupFolder() =>
       (super.noSuchMethod(
         Invocation.method(
           #getDriveBackupFolder,
           [],
         ),
-        returnValue: _i6.Future<({String id, String name})?>.value(),
-      ) as _i6.Future<({String id, String name})?>);
+        returnValue: _i7.Future<({String id, String name})?>.value(),
+      ) as _i7.Future<({String id, String name})?>);
 
   @override
-  _i6.Future<void> setDriveBackupFolder(
+  _i7.Future<void> setDriveBackupFolder(
     String? id,
     String? name,
   ) =>
@@ -565,59 +635,887 @@ class MockPreferencesService extends _i1.Mock
             name,
           ],
         ),
-        returnValue: _i6.Future<void>.value(),
-        returnValueForMissingStub: _i6.Future<void>.value(),
-      ) as _i6.Future<void>);
+        returnValue: _i7.Future<void>.value(),
+        returnValueForMissingStub: _i7.Future<void>.value(),
+      ) as _i7.Future<void>);
 
   @override
-  _i6.Future<void> clearDriveBackupFolder() => (super.noSuchMethod(
+  _i7.Future<void> clearDriveBackupFolder() => (super.noSuchMethod(
         Invocation.method(
           #clearDriveBackupFolder,
           [],
         ),
-        returnValue: _i6.Future<void>.value(),
-        returnValueForMissingStub: _i6.Future<void>.value(),
-      ) as _i6.Future<void>);
+        returnValue: _i7.Future<void>.value(),
+        returnValueForMissingStub: _i7.Future<void>.value(),
+      ) as _i7.Future<void>);
 
   @override
-  _i6.Future<_i8.AvailabilityFilterState> getAvailabilityFilter() =>
+  _i7.Future<_i9.AvailabilityFilterState> getAvailabilityFilter() =>
       (super.noSuchMethod(
         Invocation.method(
           #getAvailabilityFilter,
           [],
         ),
-        returnValue: _i6.Future<_i8.AvailabilityFilterState>.value(
-            _i8.AvailabilityFilterState.all),
-      ) as _i6.Future<_i8.AvailabilityFilterState>);
+        returnValue: _i7.Future<_i9.AvailabilityFilterState>.value(
+            _i9.AvailabilityFilterState.all),
+      ) as _i7.Future<_i9.AvailabilityFilterState>);
 
   @override
-  _i6.Future<void> setAvailabilityFilter(_i8.AvailabilityFilterState? value) =>
+  _i7.Future<void> setAvailabilityFilter(_i9.AvailabilityFilterState? value) =>
       (super.noSuchMethod(
         Invocation.method(
           #setAvailabilityFilter,
           [value],
         ),
-        returnValue: _i6.Future<void>.value(),
-        returnValueForMissingStub: _i6.Future<void>.value(),
-      ) as _i6.Future<void>);
+        returnValue: _i7.Future<void>.value(),
+        returnValueForMissingStub: _i7.Future<void>.value(),
+      ) as _i7.Future<void>);
 
   @override
-  _i6.Future<_i7.BookStatus?> getStatusFilter() => (super.noSuchMethod(
+  _i7.Future<_i8.BookStatus?> getStatusFilter() => (super.noSuchMethod(
         Invocation.method(
           #getStatusFilter,
           [],
         ),
-        returnValue: _i6.Future<_i7.BookStatus?>.value(),
-      ) as _i6.Future<_i7.BookStatus?>);
+        returnValue: _i7.Future<_i8.BookStatus?>.value(),
+      ) as _i7.Future<_i8.BookStatus?>);
 
   @override
-  _i6.Future<void> setStatusFilter(_i7.BookStatus? status) =>
+  _i7.Future<void> setStatusFilter(_i8.BookStatus? status) =>
       (super.noSuchMethod(
         Invocation.method(
           #setStatusFilter,
           [status],
         ),
-        returnValue: _i6.Future<void>.value(),
-        returnValueForMissingStub: _i6.Future<void>.value(),
-      ) as _i6.Future<void>);
+        returnValue: _i7.Future<void>.value(),
+        returnValueForMissingStub: _i7.Future<void>.value(),
+      ) as _i7.Future<void>);
+
+  @override
+  _i7.Future<String> getViewMode() => (super.noSuchMethod(
+        Invocation.method(
+          #getViewMode,
+          [],
+        ),
+        returnValue: _i7.Future<String>.value(_i10.dummyValue<String>(
+          this,
+          Invocation.method(
+            #getViewMode,
+            [],
+          ),
+        )),
+      ) as _i7.Future<String>);
+
+  @override
+  _i7.Future<void> setViewMode(String? value) => (super.noSuchMethod(
+        Invocation.method(
+          #setViewMode,
+          [value],
+        ),
+        returnValue: _i7.Future<void>.value(),
+        returnValueForMissingStub: _i7.Future<void>.value(),
+      ) as _i7.Future<void>);
+}
+
+/// A class which mocks [AudioPlayer].
+///
+/// See the documentation for Mockito's code generation for more information.
+class MockAudioPlayer extends _i1.Mock implements _i5.AudioPlayer {
+  MockAudioPlayer() {
+    _i1.throwOnMissingStub(this);
+  }
+
+  @override
+  _i5.PlayerEvent get playerEvent => (super.noSuchMethod(
+        Invocation.getter(#playerEvent),
+        returnValue: _FakePlayerEvent_3(
+          this,
+          Invocation.getter(#playerEvent),
+        ),
+      ) as _i5.PlayerEvent);
+
+  @override
+  _i7.Stream<_i5.PlayerEvent> get playerEventStream => (super.noSuchMethod(
+        Invocation.getter(#playerEventStream),
+        returnValue: _i7.Stream<_i5.PlayerEvent>.empty(),
+      ) as _i7.Stream<_i5.PlayerEvent>);
+
+  @override
+  _i5.PlaybackEvent get playbackEvent => (super.noSuchMethod(
+        Invocation.getter(#playbackEvent),
+        returnValue: _FakePlaybackEvent_4(
+          this,
+          Invocation.getter(#playbackEvent),
+        ),
+      ) as _i5.PlaybackEvent);
+
+  @override
+  _i7.Stream<_i5.PlaybackEvent> get playbackEventStream => (super.noSuchMethod(
+        Invocation.getter(#playbackEventStream),
+        returnValue: _i7.Stream<_i5.PlaybackEvent>.empty(),
+      ) as _i7.Stream<_i5.PlaybackEvent>);
+
+  @override
+  _i7.Stream<Duration?> get durationStream => (super.noSuchMethod(
+        Invocation.getter(#durationStream),
+        returnValue: _i7.Stream<Duration?>.empty(),
+      ) as _i7.Stream<Duration?>);
+
+  @override
+  _i5.ProcessingState get processingState => (super.noSuchMethod(
+        Invocation.getter(#processingState),
+        returnValue: _i5.ProcessingState.idle,
+      ) as _i5.ProcessingState);
+
+  @override
+  _i7.Stream<_i5.ProcessingState> get processingStateStream =>
+      (super.noSuchMethod(
+        Invocation.getter(#processingStateStream),
+        returnValue: _i7.Stream<_i5.ProcessingState>.empty(),
+      ) as _i7.Stream<_i5.ProcessingState>);
+
+  @override
+  bool get playing => (super.noSuchMethod(
+        Invocation.getter(#playing),
+        returnValue: false,
+      ) as bool);
+
+  @override
+  _i7.Stream<bool> get playingStream => (super.noSuchMethod(
+        Invocation.getter(#playingStream),
+        returnValue: _i7.Stream<bool>.empty(),
+      ) as _i7.Stream<bool>);
+
+  @override
+  double get volume => (super.noSuchMethod(
+        Invocation.getter(#volume),
+        returnValue: 0.0,
+      ) as double);
+
+  @override
+  _i7.Stream<double> get volumeStream => (super.noSuchMethod(
+        Invocation.getter(#volumeStream),
+        returnValue: _i7.Stream<double>.empty(),
+      ) as _i7.Stream<double>);
+
+  @override
+  double get speed => (super.noSuchMethod(
+        Invocation.getter(#speed),
+        returnValue: 0.0,
+      ) as double);
+
+  @override
+  _i7.Stream<double> get speedStream => (super.noSuchMethod(
+        Invocation.getter(#speedStream),
+        returnValue: _i7.Stream<double>.empty(),
+      ) as _i7.Stream<double>);
+
+  @override
+  double get pitch => (super.noSuchMethod(
+        Invocation.getter(#pitch),
+        returnValue: 0.0,
+      ) as double);
+
+  @override
+  _i7.Stream<double> get pitchStream => (super.noSuchMethod(
+        Invocation.getter(#pitchStream),
+        returnValue: _i7.Stream<double>.empty(),
+      ) as _i7.Stream<double>);
+
+  @override
+  bool get skipSilenceEnabled => (super.noSuchMethod(
+        Invocation.getter(#skipSilenceEnabled),
+        returnValue: false,
+      ) as bool);
+
+  @override
+  _i7.Stream<bool> get skipSilenceEnabledStream => (super.noSuchMethod(
+        Invocation.getter(#skipSilenceEnabledStream),
+        returnValue: _i7.Stream<bool>.empty(),
+      ) as _i7.Stream<bool>);
+
+  @override
+  Duration get bufferedPosition => (super.noSuchMethod(
+        Invocation.getter(#bufferedPosition),
+        returnValue: _FakeDuration_5(
+          this,
+          Invocation.getter(#bufferedPosition),
+        ),
+      ) as Duration);
+
+  @override
+  _i7.Stream<Duration> get bufferedPositionStream => (super.noSuchMethod(
+        Invocation.getter(#bufferedPositionStream),
+        returnValue: _i7.Stream<Duration>.empty(),
+      ) as _i7.Stream<Duration>);
+
+  @override
+  _i7.Stream<_i5.IcyMetadata?> get icyMetadataStream => (super.noSuchMethod(
+        Invocation.getter(#icyMetadataStream),
+        returnValue: _i7.Stream<_i5.IcyMetadata?>.empty(),
+      ) as _i7.Stream<_i5.IcyMetadata?>);
+
+  @override
+  _i5.PlayerState get playerState => (super.noSuchMethod(
+        Invocation.getter(#playerState),
+        returnValue: _FakePlayerState_6(
+          this,
+          Invocation.getter(#playerState),
+        ),
+      ) as _i5.PlayerState);
+
+  @override
+  _i7.Stream<_i5.PlayerState> get playerStateStream => (super.noSuchMethod(
+        Invocation.getter(#playerStateStream),
+        returnValue: _i7.Stream<_i5.PlayerState>.empty(),
+      ) as _i7.Stream<_i5.PlayerState>);
+
+  @override
+  List<_i5.IndexedAudioSource> get sequence => (super.noSuchMethod(
+        Invocation.getter(#sequence),
+        returnValue: <_i5.IndexedAudioSource>[],
+      ) as List<_i5.IndexedAudioSource>);
+
+  @override
+  _i7.Stream<List<_i5.IndexedAudioSource>> get sequenceStream =>
+      (super.noSuchMethod(
+        Invocation.getter(#sequenceStream),
+        returnValue: _i7.Stream<List<_i5.IndexedAudioSource>>.empty(),
+      ) as _i7.Stream<List<_i5.IndexedAudioSource>>);
+
+  @override
+  List<int> get shuffleIndices => (super.noSuchMethod(
+        Invocation.getter(#shuffleIndices),
+        returnValue: <int>[],
+      ) as List<int>);
+
+  @override
+  _i7.Stream<List<int>> get shuffleIndicesStream => (super.noSuchMethod(
+        Invocation.getter(#shuffleIndicesStream),
+        returnValue: _i7.Stream<List<int>>.empty(),
+      ) as _i7.Stream<List<int>>);
+
+  @override
+  _i7.Stream<int?> get currentIndexStream => (super.noSuchMethod(
+        Invocation.getter(#currentIndexStream),
+        returnValue: _i7.Stream<int?>.empty(),
+      ) as _i7.Stream<int?>);
+
+  @override
+  _i5.SequenceState get sequenceState => (super.noSuchMethod(
+        Invocation.getter(#sequenceState),
+        returnValue: _FakeSequenceState_7(
+          this,
+          Invocation.getter(#sequenceState),
+        ),
+      ) as _i5.SequenceState);
+
+  @override
+  _i7.Stream<_i5.SequenceState> get sequenceStateStream => (super.noSuchMethod(
+        Invocation.getter(#sequenceStateStream),
+        returnValue: _i7.Stream<_i5.SequenceState>.empty(),
+      ) as _i7.Stream<_i5.SequenceState>);
+
+  @override
+  bool get hasNext => (super.noSuchMethod(
+        Invocation.getter(#hasNext),
+        returnValue: false,
+      ) as bool);
+
+  @override
+  bool get hasPrevious => (super.noSuchMethod(
+        Invocation.getter(#hasPrevious),
+        returnValue: false,
+      ) as bool);
+
+  @override
+  List<int> get effectiveIndices => (super.noSuchMethod(
+        Invocation.getter(#effectiveIndices),
+        returnValue: <int>[],
+      ) as List<int>);
+
+  @override
+  _i5.LoopMode get loopMode => (super.noSuchMethod(
+        Invocation.getter(#loopMode),
+        returnValue: _i5.LoopMode.off,
+      ) as _i5.LoopMode);
+
+  @override
+  _i7.Stream<_i5.LoopMode> get loopModeStream => (super.noSuchMethod(
+        Invocation.getter(#loopModeStream),
+        returnValue: _i7.Stream<_i5.LoopMode>.empty(),
+      ) as _i7.Stream<_i5.LoopMode>);
+
+  @override
+  bool get shuffleModeEnabled => (super.noSuchMethod(
+        Invocation.getter(#shuffleModeEnabled),
+        returnValue: false,
+      ) as bool);
+
+  @override
+  _i7.Stream<bool> get shuffleModeEnabledStream => (super.noSuchMethod(
+        Invocation.getter(#shuffleModeEnabledStream),
+        returnValue: _i7.Stream<bool>.empty(),
+      ) as _i7.Stream<bool>);
+
+  @override
+  _i7.Stream<int?> get androidAudioSessionIdStream => (super.noSuchMethod(
+        Invocation.getter(#androidAudioSessionIdStream),
+        returnValue: _i7.Stream<int?>.empty(),
+      ) as _i7.Stream<int?>);
+
+  @override
+  _i7.Stream<_i5.PlayerException> get errorStream => (super.noSuchMethod(
+        Invocation.getter(#errorStream),
+        returnValue: _i7.Stream<_i5.PlayerException>.empty(),
+      ) as _i7.Stream<_i5.PlayerException>);
+
+  @override
+  _i7.Stream<_i5.PositionDiscontinuity> get positionDiscontinuityStream =>
+      (super.noSuchMethod(
+        Invocation.getter(#positionDiscontinuityStream),
+        returnValue: _i7.Stream<_i5.PositionDiscontinuity>.empty(),
+      ) as _i7.Stream<_i5.PositionDiscontinuity>);
+
+  @override
+  bool get automaticallyWaitsToMinimizeStalling => (super.noSuchMethod(
+        Invocation.getter(#automaticallyWaitsToMinimizeStalling),
+        returnValue: false,
+      ) as bool);
+
+  @override
+  bool get canUseNetworkResourcesForLiveStreamingWhilePaused =>
+      (super.noSuchMethod(
+        Invocation.getter(#canUseNetworkResourcesForLiveStreamingWhilePaused),
+        returnValue: false,
+      ) as bool);
+
+  @override
+  double get preferredPeakBitRate => (super.noSuchMethod(
+        Invocation.getter(#preferredPeakBitRate),
+        returnValue: 0.0,
+      ) as double);
+
+  @override
+  bool get allowsExternalPlayback => (super.noSuchMethod(
+        Invocation.getter(#allowsExternalPlayback),
+        returnValue: false,
+      ) as bool);
+
+  @override
+  String get webSinkId => (super.noSuchMethod(
+        Invocation.getter(#webSinkId),
+        returnValue: _i10.dummyValue<String>(
+          this,
+          Invocation.getter(#webSinkId),
+        ),
+      ) as String);
+
+  @override
+  Duration get position => (super.noSuchMethod(
+        Invocation.getter(#position),
+        returnValue: _FakeDuration_5(
+          this,
+          Invocation.getter(#position),
+        ),
+      ) as Duration);
+
+  @override
+  _i7.Stream<Duration> get positionStream => (super.noSuchMethod(
+        Invocation.getter(#positionStream),
+        returnValue: _i7.Stream<Duration>.empty(),
+      ) as _i7.Stream<Duration>);
+
+  @override
+  List<_i5.AudioSource> get audioSources => (super.noSuchMethod(
+        Invocation.getter(#audioSources),
+        returnValue: <_i5.AudioSource>[],
+      ) as List<_i5.AudioSource>);
+
+  @override
+  _i7.Stream<Duration> createPositionStream({
+    int? steps = 800,
+    Duration? minPeriod = const Duration(milliseconds: 200),
+    Duration? maxPeriod = const Duration(milliseconds: 200),
+  }) =>
+      (super.noSuchMethod(
+        Invocation.method(
+          #createPositionStream,
+          [],
+          {
+            #steps: steps,
+            #minPeriod: minPeriod,
+            #maxPeriod: maxPeriod,
+          },
+        ),
+        returnValue: _i7.Stream<Duration>.empty(),
+      ) as _i7.Stream<Duration>);
+
+  @override
+  _i7.Future<Duration?> setUrl(
+    String? url, {
+    Map<String, String>? headers,
+    Duration? initialPosition,
+    bool? preload = true,
+    dynamic tag,
+  }) =>
+      (super.noSuchMethod(
+        Invocation.method(
+          #setUrl,
+          [url],
+          {
+            #headers: headers,
+            #initialPosition: initialPosition,
+            #preload: preload,
+            #tag: tag,
+          },
+        ),
+        returnValue: _i7.Future<Duration?>.value(),
+      ) as _i7.Future<Duration?>);
+
+  @override
+  _i7.Future<Duration?> setFilePath(
+    String? filePath, {
+    Duration? initialPosition,
+    bool? preload = true,
+    dynamic tag,
+  }) =>
+      (super.noSuchMethod(
+        Invocation.method(
+          #setFilePath,
+          [filePath],
+          {
+            #initialPosition: initialPosition,
+            #preload: preload,
+            #tag: tag,
+          },
+        ),
+        returnValue: _i7.Future<Duration?>.value(),
+      ) as _i7.Future<Duration?>);
+
+  @override
+  _i7.Future<Duration?> setAsset(
+    String? assetPath, {
+    String? package,
+    bool? preload = true,
+    Duration? initialPosition,
+    dynamic tag,
+  }) =>
+      (super.noSuchMethod(
+        Invocation.method(
+          #setAsset,
+          [assetPath],
+          {
+            #package: package,
+            #preload: preload,
+            #initialPosition: initialPosition,
+            #tag: tag,
+          },
+        ),
+        returnValue: _i7.Future<Duration?>.value(),
+      ) as _i7.Future<Duration?>);
+
+  @override
+  _i7.Future<Duration?> setAudioSource(
+    _i5.AudioSource? audioSource, {
+    bool? preload = true,
+    int? initialIndex,
+    Duration? initialPosition,
+  }) =>
+      (super.noSuchMethod(
+        Invocation.method(
+          #setAudioSource,
+          [audioSource],
+          {
+            #preload: preload,
+            #initialIndex: initialIndex,
+            #initialPosition: initialPosition,
+          },
+        ),
+        returnValue: _i7.Future<Duration?>.value(),
+      ) as _i7.Future<Duration?>);
+
+  @override
+  _i7.Future<Duration?> setAudioSources(
+    List<_i5.AudioSource>? audioSources, {
+    bool? preload = true,
+    int? initialIndex,
+    Duration? initialPosition,
+    _i5.ShuffleOrder? shuffleOrder,
+  }) =>
+      (super.noSuchMethod(
+        Invocation.method(
+          #setAudioSources,
+          [audioSources],
+          {
+            #preload: preload,
+            #initialIndex: initialIndex,
+            #initialPosition: initialPosition,
+            #shuffleOrder: shuffleOrder,
+          },
+        ),
+        returnValue: _i7.Future<Duration?>.value(),
+      ) as _i7.Future<Duration?>);
+
+  @override
+  _i7.Future<Duration?> load() => (super.noSuchMethod(
+        Invocation.method(
+          #load,
+          [],
+        ),
+        returnValue: _i7.Future<Duration?>.value(),
+      ) as _i7.Future<Duration?>);
+
+  @override
+  _i7.Future<void> addAudioSource(_i5.AudioSource? audioSource) =>
+      (super.noSuchMethod(
+        Invocation.method(
+          #addAudioSource,
+          [audioSource],
+        ),
+        returnValue: _i7.Future<void>.value(),
+        returnValueForMissingStub: _i7.Future<void>.value(),
+      ) as _i7.Future<void>);
+
+  @override
+  _i7.Future<void> insertAudioSource(
+    int? index,
+    _i5.AudioSource? audioSource,
+  ) =>
+      (super.noSuchMethod(
+        Invocation.method(
+          #insertAudioSource,
+          [
+            index,
+            audioSource,
+          ],
+        ),
+        returnValue: _i7.Future<void>.value(),
+        returnValueForMissingStub: _i7.Future<void>.value(),
+      ) as _i7.Future<void>);
+
+  @override
+  _i7.Future<void> addAudioSources(List<_i5.AudioSource>? audioSources) =>
+      (super.noSuchMethod(
+        Invocation.method(
+          #addAudioSources,
+          [audioSources],
+        ),
+        returnValue: _i7.Future<void>.value(),
+        returnValueForMissingStub: _i7.Future<void>.value(),
+      ) as _i7.Future<void>);
+
+  @override
+  _i7.Future<void> insertAudioSources(
+    int? index,
+    List<_i5.AudioSource>? audioSources,
+  ) =>
+      (super.noSuchMethod(
+        Invocation.method(
+          #insertAudioSources,
+          [
+            index,
+            audioSources,
+          ],
+        ),
+        returnValue: _i7.Future<void>.value(),
+        returnValueForMissingStub: _i7.Future<void>.value(),
+      ) as _i7.Future<void>);
+
+  @override
+  _i7.Future<void> removeAudioSourceAt(int? index) => (super.noSuchMethod(
+        Invocation.method(
+          #removeAudioSourceAt,
+          [index],
+        ),
+        returnValue: _i7.Future<void>.value(),
+        returnValueForMissingStub: _i7.Future<void>.value(),
+      ) as _i7.Future<void>);
+
+  @override
+  _i7.Future<void> removeAudioSourceRange(
+    int? start,
+    int? end,
+  ) =>
+      (super.noSuchMethod(
+        Invocation.method(
+          #removeAudioSourceRange,
+          [
+            start,
+            end,
+          ],
+        ),
+        returnValue: _i7.Future<void>.value(),
+        returnValueForMissingStub: _i7.Future<void>.value(),
+      ) as _i7.Future<void>);
+
+  @override
+  _i7.Future<void> moveAudioSource(
+    int? currentIndex,
+    int? newIndex,
+  ) =>
+      (super.noSuchMethod(
+        Invocation.method(
+          #moveAudioSource,
+          [
+            currentIndex,
+            newIndex,
+          ],
+        ),
+        returnValue: _i7.Future<void>.value(),
+        returnValueForMissingStub: _i7.Future<void>.value(),
+      ) as _i7.Future<void>);
+
+  @override
+  _i7.Future<void> clearAudioSources() => (super.noSuchMethod(
+        Invocation.method(
+          #clearAudioSources,
+          [],
+        ),
+        returnValue: _i7.Future<void>.value(),
+        returnValueForMissingStub: _i7.Future<void>.value(),
+      ) as _i7.Future<void>);
+
+  @override
+  _i7.Future<Duration?> setClip({
+    Duration? start,
+    Duration? end,
+    dynamic tag,
+  }) =>
+      (super.noSuchMethod(
+        Invocation.method(
+          #setClip,
+          [],
+          {
+            #start: start,
+            #end: end,
+            #tag: tag,
+          },
+        ),
+        returnValue: _i7.Future<Duration?>.value(),
+      ) as _i7.Future<Duration?>);
+
+  @override
+  _i7.Future<void> play() => (super.noSuchMethod(
+        Invocation.method(
+          #play,
+          [],
+        ),
+        returnValue: _i7.Future<void>.value(),
+        returnValueForMissingStub: _i7.Future<void>.value(),
+      ) as _i7.Future<void>);
+
+  @override
+  _i7.Future<void> pause() => (super.noSuchMethod(
+        Invocation.method(
+          #pause,
+          [],
+        ),
+        returnValue: _i7.Future<void>.value(),
+        returnValueForMissingStub: _i7.Future<void>.value(),
+      ) as _i7.Future<void>);
+
+  @override
+  _i7.Future<void> stop() => (super.noSuchMethod(
+        Invocation.method(
+          #stop,
+          [],
+        ),
+        returnValue: _i7.Future<void>.value(),
+        returnValueForMissingStub: _i7.Future<void>.value(),
+      ) as _i7.Future<void>);
+
+  @override
+  _i7.Future<void> setVolume(double? volume) => (super.noSuchMethod(
+        Invocation.method(
+          #setVolume,
+          [volume],
+        ),
+        returnValue: _i7.Future<void>.value(),
+        returnValueForMissingStub: _i7.Future<void>.value(),
+      ) as _i7.Future<void>);
+
+  @override
+  _i7.Future<void> setSkipSilenceEnabled(bool? enabled) => (super.noSuchMethod(
+        Invocation.method(
+          #setSkipSilenceEnabled,
+          [enabled],
+        ),
+        returnValue: _i7.Future<void>.value(),
+        returnValueForMissingStub: _i7.Future<void>.value(),
+      ) as _i7.Future<void>);
+
+  @override
+  _i7.Future<void> setSpeed(double? speed) => (super.noSuchMethod(
+        Invocation.method(
+          #setSpeed,
+          [speed],
+        ),
+        returnValue: _i7.Future<void>.value(),
+        returnValueForMissingStub: _i7.Future<void>.value(),
+      ) as _i7.Future<void>);
+
+  @override
+  _i7.Future<void> setPitch(double? pitch) => (super.noSuchMethod(
+        Invocation.method(
+          #setPitch,
+          [pitch],
+        ),
+        returnValue: _i7.Future<void>.value(),
+        returnValueForMissingStub: _i7.Future<void>.value(),
+      ) as _i7.Future<void>);
+
+  @override
+  _i7.Future<void> setLoopMode(_i5.LoopMode? mode) => (super.noSuchMethod(
+        Invocation.method(
+          #setLoopMode,
+          [mode],
+        ),
+        returnValue: _i7.Future<void>.value(),
+        returnValueForMissingStub: _i7.Future<void>.value(),
+      ) as _i7.Future<void>);
+
+  @override
+  _i7.Future<void> setShuffleModeEnabled(bool? enabled) => (super.noSuchMethod(
+        Invocation.method(
+          #setShuffleModeEnabled,
+          [enabled],
+        ),
+        returnValue: _i7.Future<void>.value(),
+        returnValueForMissingStub: _i7.Future<void>.value(),
+      ) as _i7.Future<void>);
+
+  @override
+  _i7.Future<void> shuffle() => (super.noSuchMethod(
+        Invocation.method(
+          #shuffle,
+          [],
+        ),
+        returnValue: _i7.Future<void>.value(),
+        returnValueForMissingStub: _i7.Future<void>.value(),
+      ) as _i7.Future<void>);
+
+  @override
+  _i7.Future<void> setAutomaticallyWaitsToMinimizeStalling(
+          bool? automaticallyWaitsToMinimizeStalling) =>
+      (super.noSuchMethod(
+        Invocation.method(
+          #setAutomaticallyWaitsToMinimizeStalling,
+          [automaticallyWaitsToMinimizeStalling],
+        ),
+        returnValue: _i7.Future<void>.value(),
+        returnValueForMissingStub: _i7.Future<void>.value(),
+      ) as _i7.Future<void>);
+
+  @override
+  _i7.Future<void> setCanUseNetworkResourcesForLiveStreamingWhilePaused(
+          bool? canUseNetworkResourcesForLiveStreamingWhilePaused) =>
+      (super.noSuchMethod(
+        Invocation.method(
+          #setCanUseNetworkResourcesForLiveStreamingWhilePaused,
+          [canUseNetworkResourcesForLiveStreamingWhilePaused],
+        ),
+        returnValue: _i7.Future<void>.value(),
+        returnValueForMissingStub: _i7.Future<void>.value(),
+      ) as _i7.Future<void>);
+
+  @override
+  _i7.Future<void> setPreferredPeakBitRate(double? preferredPeakBitRate) =>
+      (super.noSuchMethod(
+        Invocation.method(
+          #setPreferredPeakBitRate,
+          [preferredPeakBitRate],
+        ),
+        returnValue: _i7.Future<void>.value(),
+        returnValueForMissingStub: _i7.Future<void>.value(),
+      ) as _i7.Future<void>);
+
+  @override
+  _i7.Future<void> setAllowsExternalPlayback(bool? allowsExternalPlayback) =>
+      (super.noSuchMethod(
+        Invocation.method(
+          #setAllowsExternalPlayback,
+          [allowsExternalPlayback],
+        ),
+        returnValue: _i7.Future<void>.value(),
+        returnValueForMissingStub: _i7.Future<void>.value(),
+      ) as _i7.Future<void>);
+
+  @override
+  _i7.Future<void> seek(
+    Duration? position, {
+    int? index,
+  }) =>
+      (super.noSuchMethod(
+        Invocation.method(
+          #seek,
+          [position],
+          {#index: index},
+        ),
+        returnValue: _i7.Future<void>.value(),
+        returnValueForMissingStub: _i7.Future<void>.value(),
+      ) as _i7.Future<void>);
+
+  @override
+  _i7.Future<void> seekToNext() => (super.noSuchMethod(
+        Invocation.method(
+          #seekToNext,
+          [],
+        ),
+        returnValue: _i7.Future<void>.value(),
+        returnValueForMissingStub: _i7.Future<void>.value(),
+      ) as _i7.Future<void>);
+
+  @override
+  _i7.Future<void> seekToPrevious() => (super.noSuchMethod(
+        Invocation.method(
+          #seekToPrevious,
+          [],
+        ),
+        returnValue: _i7.Future<void>.value(),
+        returnValueForMissingStub: _i7.Future<void>.value(),
+      ) as _i7.Future<void>);
+
+  @override
+  _i7.Future<void> setAndroidAudioAttributes(
+          _i11.AndroidAudioAttributes? audioAttributes) =>
+      (super.noSuchMethod(
+        Invocation.method(
+          #setAndroidAudioAttributes,
+          [audioAttributes],
+        ),
+        returnValue: _i7.Future<void>.value(),
+        returnValueForMissingStub: _i7.Future<void>.value(),
+      ) as _i7.Future<void>);
+
+  @override
+  _i7.Future<void> setWebCrossOrigin(_i5.WebCrossOrigin? webCrossOrigin) =>
+      (super.noSuchMethod(
+        Invocation.method(
+          #setWebCrossOrigin,
+          [webCrossOrigin],
+        ),
+        returnValue: _i7.Future<void>.value(),
+        returnValueForMissingStub: _i7.Future<void>.value(),
+      ) as _i7.Future<void>);
+
+  @override
+  _i7.Future<void> setWebSinkId(String? webSinkId) => (super.noSuchMethod(
+        Invocation.method(
+          #setWebSinkId,
+          [webSinkId],
+        ),
+        returnValue: _i7.Future<void>.value(),
+        returnValueForMissingStub: _i7.Future<void>.value(),
+      ) as _i7.Future<void>);
+
+  @override
+  _i7.Future<void> dispose() => (super.noSuchMethod(
+        Invocation.method(
+          #dispose,
+          [],
+        ),
+        returnValue: _i7.Future<void>.value(),
+        returnValueForMissingStub: _i7.Future<void>.value(),
+      ) as _i7.Future<void>);
 }

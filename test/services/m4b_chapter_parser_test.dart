@@ -108,6 +108,45 @@ void main() {
       final chapters = await M4bChapterParser.parseChapters(path);
       expect(chapters, isEmpty);
     });
+
+    test('parses chpl nested inside a FullBox meta container', () async {
+      // iTunes-style layout: moov/udta/meta/chpl where `meta` carries a
+      // 4-byte version/flags header between its own header and its children.
+      final chplData = _buildChplPayload([
+        (Duration.zero, 'Intro'),
+        (const Duration(minutes: 5), 'Chapter 1'),
+      ]);
+      final chplBox = _box('chpl', chplData);
+      final metaPayload =
+          Uint8List.fromList([0, 0, 0, 0, ...chplBox]); // FullBox header
+      final metaBox = _box('meta', metaPayload);
+      final udtaBox = _containerBox('udta', [metaBox]);
+      final moovBox = _containerBox('moov', [udtaBox]);
+      final path = await _writeTempFile(tempDir, moovBox);
+
+      final chapters = await M4bChapterParser.parseChapters(path);
+
+      expect(chapters.length, 2);
+      expect(chapters[0].title, 'Intro');
+      expect(chapters[1].title, 'Chapter 1');
+    });
+
+    test('sorts out-of-order chpl entries chronologically', () async {
+      final chplData = _buildChplPayload([
+        (const Duration(minutes: 15), 'Late'),
+        (Duration.zero, 'First'),
+        (const Duration(minutes: 5), 'Middle'),
+      ]);
+      final chplBox = _box('chpl', chplData);
+      final udtaBox = _containerBox('udta', [chplBox]);
+      final moovBox = _containerBox('moov', [udtaBox]);
+      final path = await _writeTempFile(tempDir, moovBox);
+
+      final chapters = await M4bChapterParser.parseChapters(path);
+
+      expect(
+          chapters.map((c) => c.title).toList(), ['First', 'Middle', 'Late']);
+    });
   });
 
   group('M4bChapterParser — edge cases', () {

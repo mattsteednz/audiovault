@@ -1,11 +1,13 @@
 import 'dart:async';
 import 'dart:io';
 
+import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import 'package:path_provider/path_provider.dart';
 
 import 'drive_book_repository.dart';
 import 'drive_service.dart';
+import '../utils/safe_fs_name.dart';
 
 class DriveDownloadEvent {
   final String folderId;
@@ -29,7 +31,12 @@ class DriveDownloadManager {
   final DriveBookRepository _repo;
   final DriveService _driveService;
 
-  DriveDownloadManager(this._repo, this._driveService);
+  /// Delay before a failed job's retry. Injectable for tests.
+  @visibleForTesting
+  final Duration retryDelay;
+
+  DriveDownloadManager(this._repo, this._driveService,
+      {this.retryDelay = const Duration(seconds: 3)});
 
   final _controller = StreamController<DriveDownloadEvent>.broadcast();
   Stream<DriveDownloadEvent> get downloadEvents => _controller.stream;
@@ -39,27 +46,6 @@ class DriveDownloadManager {
   // Limit total concurrent active downloads across all books.
   int _activeCount = 0;
   static const _maxConcurrent = 2;
-
-  /// Enqueues the next [count] undownloaded files for [folderId] starting from [fromFileIndex].
-  Future<void> enqueueNextFiles({
-    required String folderId,
-    required int fromFileIndex,
-    int count = 3,
-  }) async {
-    final files = await _repo.getFilesForBook(folderId);
-    // Find undownloaded files starting at or after fromFileIndex
-    final toQueue = files
-        .where((f) =>
-            f.fileIndex >= fromFileIndex &&
-            f.downloadState == DriveDownloadState.none)
-        .take(count)
-        .toList();
-
-    for (final f in toQueue) {
-      _enqueue(folderId, f);
-    }
-    _drain();
-  }
 
   /// Re-enqueues any book that has files in [DriveDownloadState.error] and is
   /// not yet fully downloaded. Called on app resume to recover downloads that
@@ -140,7 +126,9 @@ class DriveDownloadManager {
       queue.activeClient = null;
       _activeCount--;
       _drain();
-    }).catchError((e) {
+    }).catchError((Object e) {
+      debugPrint('[Kowhai:Download] ${job.fileName} failed '
+          '(${job.retriesLeft} retries left): $e');
       queue.active = false;
       queue.activeClient = null;
       _activeCount--;
@@ -150,7 +138,16 @@ class DriveDownloadManager {
         _drain();
       } else if (job.retriesLeft > 0) {
         // Re-queue at the front with one fewer retry, after a short delay.
-        Future.delayed(const Duration(seconds: 3), () {
+        queue.retryPending = true;
+        Future.delayed(retryDelay, () {
+          queue.retryPending = false;
+          // A cancelDownload() during the delay window must win — never
+          // resurrect a job the user cancelled.
+          if (queue.cancelling) {
+            queue.cancelling = false;
+            _drain();
+            return;
+          }
           queue.pending.insert(0, job.withRetry());
           _drain();
         });
@@ -166,7 +163,16 @@ class DriveDownloadManager {
     if (queue == null) return;
     queue.cancelling = true;
     queue.pending.clear();
-    queue.activeClient?.close(); // Causes the active stream to throw
+    final client = queue.activeClient;
+    if (client != null) {
+      // Causes the active stream to throw; that job's error handler consumes
+      // the cancelling flag once the abort is processed.
+      client.close();
+    } else if (!queue.retryPending) {
+      // Nothing in flight and no retry scheduled — clear the flag now so a
+      // later genuine failure on this queue still gets its retries.
+      queue.cancelling = false;
+    }
   }
 
   Future<void> _doDownload(_DownloadJob job, _BookQueue queue) async {
@@ -311,7 +317,9 @@ class DriveDownloadManager {
 
   Future<String> _defaultDestPath(String folderId, String fileName) async {
     final dir = await getApplicationDocumentsDirectory();
-    return '${dir.path}/drive_books/$folderId/$fileName';
+    // fileName comes from Drive metadata (user-controlled) — sanitise before
+    // it becomes a path segment.
+    return '${dir.path}/drive_books/$folderId/${safeFsName(fileName)}';
   }
 
   void dispose() {
@@ -323,6 +331,7 @@ class _BookQueue {
   final String folderId;
   bool active = false;
   bool cancelling = false;
+  bool retryPending = false; // a failed job's delayed retry is scheduled
   http.Client? activeClient;
   final List<_DownloadJob> pending = [];
   _BookQueue(this.folderId);

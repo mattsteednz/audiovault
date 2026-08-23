@@ -163,7 +163,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
   Future<void> _setTelemetry(bool value) async {
     await locator<PreferencesService>().setAnalyticsConsent(value);
     await TelemetryService.applyConsent(value);
-    if (value) TelemetryService.enableCrashHandler();
+    if (value) {
+      TelemetryService.enableCrashHandler();
+    } else {
+      TelemetryService.disableCrashHandler();
+    }
     setState(() => _telemetryEnabled = value);
   }
 

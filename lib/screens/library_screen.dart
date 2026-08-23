@@ -270,8 +270,11 @@ class _LibraryScreenState extends State<LibraryScreen> {
 
   // Search state.
   bool _isSearching = false;
-  String _searchQuery = '';
-  final TextEditingController _searchController = TextEditingController();
+String _searchQuery = '';
+final TextEditingController _searchController = TextEditingController();
+// Debounces keystrokes so the full filter pipeline runs at most ~7×/s
+// instead of on every character. Clear actions flush immediately.
+Timer? _searchDebounce;
 
   // Status filter pill selection (null = show all).
   BookStatus? _statusFilter;
@@ -325,6 +328,7 @@ class _LibraryScreenState extends State<LibraryScreen> {
     _playbackSub?.cancel();
     _enrichSub?.cancel();
     _driveSub?.cancel();
+    _searchDebounce?.cancel();
     _searchController.dispose();
     super.dispose();
   }
@@ -332,6 +336,7 @@ class _LibraryScreenState extends State<LibraryScreen> {
   void _openSearch() => setState(() => _isSearching = true);
 
   void _closeSearch() {
+    _searchDebounce?.cancel();
     _searchController.clear();
     setState(() {
       _isSearching = false;
@@ -348,11 +353,22 @@ class _LibraryScreenState extends State<LibraryScreen> {
 
   // ── Scan + sort ─────────────────────────────────────────────────────────────
 
+  /// Toggles grid/list and persists the choice across launches.
+  Future<void> _toggleViewMode() async {
+    setState(() {
+      _viewMode =
+          _viewMode == _ViewMode.grid ? _ViewMode.list : _ViewMode.grid;
+    });
+    await locator<PreferencesService>()
+        .setViewMode(_viewMode == _ViewMode.grid ? 'grid' : 'list');
+  }
+
   Future<void> _initLibrary() async {
     final prefs = locator<PreferencesService>();
     final sortName = await prefs.getLibrarySort();
     final availFilter = await prefs.getAvailabilityFilter();
     final statusFilter = await prefs.getStatusFilter();
+    final viewModeName = await prefs.getViewMode();
     final driveConnected = locator<DriveService>().currentAccount != null;
     if (mounted) {
       setState(() {
@@ -361,6 +377,7 @@ class _LibraryScreenState extends State<LibraryScreen> {
         // without a Drive account and the section won't be shown in the UI.
         _availabilityFilter = driveConnected ? availFilter : AvailabilityFilterState.all;
         _statusFilter = statusFilter;
+        _viewMode = viewModeName == 'list' ? _ViewMode.list : _ViewMode.grid;
       });
     }
     final shouldScan = widget.initialSyncDrive || await prefs.getRefreshOnStartup();
@@ -786,7 +803,13 @@ class _LibraryScreenState extends State<LibraryScreen> {
               child: TextField(
                 controller: _searchController,
                 autofocus: true,
-                onChanged: (v) => setState(() => _searchQuery = v),
+                onChanged: (v) {
+                  _searchDebounce?.cancel();
+                  _searchDebounce =
+                      Timer(const Duration(milliseconds: 150), () {
+                    if (mounted) setState(() => _searchQuery = v);
+                  });
+                },
                 decoration: InputDecoration(
                   hintText: 'Search by title or author…',
                   prefixIcon: const Icon(Icons.search_rounded),
@@ -794,6 +817,7 @@ class _LibraryScreenState extends State<LibraryScreen> {
                       ? IconButton(
                           icon: const Icon(Icons.clear_rounded),
                           onPressed: () {
+                            _searchDebounce?.cancel();
                             _searchController.clear();
                             setState(() => _searchQuery = '');
                           },
@@ -952,10 +976,7 @@ class _LibraryScreenState extends State<LibraryScreen> {
             icon: Icon(_viewMode == _ViewMode.grid
                 ? Icons.view_list_rounded
                 : Icons.grid_view_rounded),
-            onPressed: () => setState(() => _viewMode =
-                _viewMode == _ViewMode.grid
-                    ? _ViewMode.list
-                    : _ViewMode.grid),
+            onPressed: _toggleViewMode,
             tooltip:
                 _viewMode == _ViewMode.grid ? 'Switch to list view' : 'Switch to grid view',
             visualDensity: VisualDensity.compact,
@@ -1372,6 +1393,7 @@ class _LibraryScreenState extends State<LibraryScreen> {
   }
 
   void _clearSearchAndFilters() {
+    _searchDebounce?.cancel();
     _searchController.clear();
     setState(() {
       _searchQuery = '';

@@ -37,9 +37,19 @@ import 'package:sqflite/sqflite.dart' as _i3;
 // ignore_for_file: subtype_of_sealed_class
 // ignore_for_file: invalid_use_of_internal_member
 
-class _FakeValueNotifier_0<T> extends _i1.SmartFake
+class _FakeDuration_0 extends _i1.SmartFake implements Duration {
+  _FakeDuration_0(
+    Object parent,
+    Invocation parentInvocation,
+  ) : super(
+          parent,
+          parentInvocation,
+        );
+}
+
+class _FakeValueNotifier_1<T> extends _i1.SmartFake
     implements _i2.ValueNotifier<T> {
-  _FakeValueNotifier_0(
+  _FakeValueNotifier_1(
     Object parent,
     Invocation parentInvocation,
   ) : super(
@@ -48,8 +58,8 @@ class _FakeValueNotifier_0<T> extends _i1.SmartFake
         );
 }
 
-class _FakeDatabase_1 extends _i1.SmartFake implements _i3.Database {
-  _FakeDatabase_1(
+class _FakeDatabase_2 extends _i1.SmartFake implements _i3.Database {
+  _FakeDatabase_2(
     Object parent,
     Invocation parentInvocation,
   ) : super(
@@ -58,8 +68,8 @@ class _FakeDatabase_1 extends _i1.SmartFake implements _i3.Database {
         );
 }
 
-class _FakeBookmark_2 extends _i1.SmartFake implements _i4.Bookmark {
-  _FakeBookmark_2(
+class _FakeBookmark_3 extends _i1.SmartFake implements _i4.Bookmark {
+  _FakeBookmark_3(
     Object parent,
     Invocation parentInvocation,
   ) : super(
@@ -68,9 +78,9 @@ class _FakeBookmark_2 extends _i1.SmartFake implements _i4.Bookmark {
         );
 }
 
-class _FakeSettingsSnapshot_3 extends _i1.SmartFake
+class _FakeSettingsSnapshot_4 extends _i1.SmartFake
     implements _i5.SettingsSnapshot {
-  _FakeSettingsSnapshot_3(
+  _FakeSettingsSnapshot_4(
     Object parent,
     Invocation parentInvocation,
   ) : super(
@@ -358,30 +368,19 @@ class MockDriveDownloadManager extends _i1.Mock
   }
 
   @override
+  Duration get retryDelay => (super.noSuchMethod(
+        Invocation.getter(#retryDelay),
+        returnValue: _FakeDuration_0(
+          this,
+          Invocation.getter(#retryDelay),
+        ),
+      ) as Duration);
+
+  @override
   _i7.Stream<_i11.DriveDownloadEvent> get downloadEvents => (super.noSuchMethod(
         Invocation.getter(#downloadEvents),
         returnValue: _i7.Stream<_i11.DriveDownloadEvent>.empty(),
       ) as _i7.Stream<_i11.DriveDownloadEvent>);
-
-  @override
-  _i7.Future<void> enqueueNextFiles({
-    required String? folderId,
-    required int? fromFileIndex,
-    int? count = 3,
-  }) =>
-      (super.noSuchMethod(
-        Invocation.method(
-          #enqueueNextFiles,
-          [],
-          {
-            #folderId: folderId,
-            #fromFileIndex: fromFileIndex,
-            #count: count,
-          },
-        ),
-        returnValue: _i7.Future<void>.value(),
-        returnValueForMissingStub: _i7.Future<void>.value(),
-      ) as _i7.Future<void>);
 
   @override
   _i7.Future<void> resumeInterruptedDownloads() => (super.noSuchMethod(
@@ -462,7 +461,7 @@ class MockEnrichmentService extends _i1.Mock implements _i12.EnrichmentService {
   @override
   _i2.ValueNotifier<Set<String>> get enrichingPaths => (super.noSuchMethod(
         Invocation.getter(#enrichingPaths),
-        returnValue: _FakeValueNotifier_0<Set<String>>(
+        returnValue: _FakeValueNotifier_1<Set<String>>(
           this,
           Invocation.getter(#enrichingPaths),
         ),
@@ -471,7 +470,7 @@ class MockEnrichmentService extends _i1.Mock implements _i12.EnrichmentService {
   @override
   _i2.ValueNotifier<Set<String>> get failedPaths => (super.noSuchMethod(
         Invocation.getter(#failedPaths),
-        returnValue: _FakeValueNotifier_0<Set<String>>(
+        returnValue: _FakeValueNotifier_1<Set<String>>(
           this,
           Invocation.getter(#failedPaths),
         ),
@@ -544,7 +543,7 @@ class MockPositionService extends _i1.Mock implements _i13.PositionService {
   @override
   _i7.Future<_i3.Database> get databaseForTesting => (super.noSuchMethod(
         Invocation.getter(#databaseForTesting),
-        returnValue: _i7.Future<_i3.Database>.value(_FakeDatabase_1(
+        returnValue: _i7.Future<_i3.Database>.value(_FakeDatabase_2(
           this,
           Invocation.getter(#databaseForTesting),
         )),
@@ -553,7 +552,7 @@ class MockPositionService extends _i1.Mock implements _i13.PositionService {
   @override
   _i7.Future<_i3.Database> get sharedDb => (super.noSuchMethod(
         Invocation.getter(#sharedDb),
-        returnValue: _i7.Future<_i3.Database>.value(_FakeDatabase_1(
+        returnValue: _i7.Future<_i3.Database>.value(_FakeDatabase_2(
           this,
           Invocation.getter(#sharedDb),
         )),
@@ -582,6 +581,15 @@ class MockPositionService extends _i1.Mock implements _i13.PositionService {
         returnValue: _i7.Future<void>.value(),
         returnValueForMissingStub: _i7.Future<void>.value(),
       ) as _i7.Future<void>);
+
+  @override
+  _i7.Future<bool> repairFromGlobal(_i9.Audiobook? book) => (super.noSuchMethod(
+        Invocation.method(
+          #repairFromGlobal,
+          [book],
+        ),
+        returnValue: _i7.Future<bool>.value(false),
+      ) as _i7.Future<bool>);
 
   @override
   _i7.Future<({int chapterIndex, Duration position})?> getPosition(
@@ -658,7 +666,7 @@ class MockPositionService extends _i1.Mock implements _i13.PositionService {
           #addBookmark,
           [bookmark],
         ),
-        returnValue: _i7.Future<_i4.Bookmark>.value(_FakeBookmark_2(
+        returnValue: _i7.Future<_i4.Bookmark>.value(_FakeBookmark_3(
           this,
           Invocation.method(
             #addBookmark,
@@ -720,7 +728,9 @@ class MockPositionService extends _i1.Mock implements _i13.PositionService {
       List<
           ({
             String bookPath,
+            int chapterIndex,
             int globalPositionMs,
+            int positionMs,
             int totalDurationMs,
             int updatedAt
           })>> getAllPositions() => (super.noSuchMethod(
@@ -732,12 +742,16 @@ class MockPositionService extends _i1.Mock implements _i13.PositionService {
             List<
                 ({
                   String bookPath,
+                  int chapterIndex,
                   int globalPositionMs,
+                  int positionMs,
                   int totalDurationMs,
                   int updatedAt
                 })>>.value(<({
           String bookPath,
+          int chapterIndex,
           int globalPositionMs,
+          int positionMs,
           int totalDurationMs,
           int updatedAt
         })>[]),
@@ -745,7 +759,9 @@ class MockPositionService extends _i1.Mock implements _i13.PositionService {
           List<
               ({
                 String bookPath,
+                int chapterIndex,
                 int globalPositionMs,
+                int positionMs,
                 int totalDurationMs,
                 int updatedAt
               })>>);
@@ -767,7 +783,7 @@ class MockPreferencesService extends _i1.Mock
           [],
         ),
         returnValue:
-            _i7.Future<_i5.SettingsSnapshot>.value(_FakeSettingsSnapshot_3(
+            _i7.Future<_i5.SettingsSnapshot>.value(_FakeSettingsSnapshot_4(
           this,
           Invocation.method(
             #getSettingsSnapshot,
@@ -1094,6 +1110,31 @@ class MockPreferencesService extends _i1.Mock
         returnValue: _i7.Future<void>.value(),
         returnValueForMissingStub: _i7.Future<void>.value(),
       ) as _i7.Future<void>);
+
+  @override
+  _i7.Future<String> getViewMode() => (super.noSuchMethod(
+        Invocation.method(
+          #getViewMode,
+          [],
+        ),
+        returnValue: _i7.Future<String>.value(_i8.dummyValue<String>(
+          this,
+          Invocation.method(
+            #getViewMode,
+            [],
+          ),
+        )),
+      ) as _i7.Future<String>);
+
+  @override
+  _i7.Future<void> setViewMode(String? value) => (super.noSuchMethod(
+        Invocation.method(
+          #setViewMode,
+          [value],
+        ),
+        returnValue: _i7.Future<void>.value(),
+        returnValueForMissingStub: _i7.Future<void>.value(),
+      ) as _i7.Future<void>);
 }
 
 /// A class which mocks [ScannerService].
@@ -1145,7 +1186,7 @@ class MockSleepTimerController extends _i1.Mock
   @override
   _i2.ValueNotifier<Duration?> get remaining => (super.noSuchMethod(
         Invocation.getter(#remaining),
-        returnValue: _FakeValueNotifier_0<Duration?>(
+        returnValue: _FakeValueNotifier_1<Duration?>(
           this,
           Invocation.getter(#remaining),
         ),
@@ -1154,7 +1195,7 @@ class MockSleepTimerController extends _i1.Mock
   @override
   _i2.ValueNotifier<bool> get stopAtChapterEnd => (super.noSuchMethod(
         Invocation.getter(#stopAtChapterEnd),
-        returnValue: _FakeValueNotifier_0<bool>(
+        returnValue: _FakeValueNotifier_1<bool>(
           this,
           Invocation.getter(#stopAtChapterEnd),
         ),

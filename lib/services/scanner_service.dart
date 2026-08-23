@@ -58,7 +58,17 @@ class ScannerService {
       return [];
     }
 
-    final entries = await dir.list().toList();
+    // Unlike subfolder listings (which degrade to "skip this folder"), a root
+    // listing failure is fatal to the scan — rethrow so callers surface a
+    // friendly retryable error (see friendlyScanError) instead of silently
+    // presenting an empty library.
+    List<FileSystemEntity> entries;
+    try {
+      entries = await dir.list().toList();
+    } catch (e) {
+      _log('ERROR listing root: $e');
+      rethrow;
+    }
     final subdirs = entries
         .whereType<Directory>()
         .where((d) =>
