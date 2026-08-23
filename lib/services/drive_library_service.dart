@@ -4,6 +4,7 @@ import 'package:flutter/foundation.dart';
 import 'package:path_provider/path_provider.dart';
 
 import '../models/audiobook.dart';
+import '../utils/safe_fs_name.dart';
 import 'drive_book_repository.dart';
 import 'drive_download_manager.dart';
 import 'drive_service.dart';
@@ -42,7 +43,9 @@ class DriveLibraryService {
     if (folderName != null) {
       final localPath = await _prefs.getLibraryPath();
       if (localPath != null && localPath.isNotEmpty) {
-        return '$localPath/$folderName';
+        // Drive folder names are user-controlled — sanitise so a hostile name
+        // (e.g. containing `/` or `..`) cannot escape the library root.
+        return '$localPath/${safeFsName(folderName)}';
       }
     }
     return stagingDir(folderId);
@@ -173,7 +176,7 @@ class DriveLibraryService {
           mimeType: f.mimeType,
           sizeBytes: f.sizeBytes,
           downloadState: DriveDownloadState.none,
-          localPath: '$dir/${f.name}',
+          localPath: '$dir/${safeFsName(f.name)}',
         ));
       }
     }
@@ -220,7 +223,7 @@ class DriveLibraryService {
       final files = await _repo.getFilesForBook(folderId);
       for (final f in files) {
         if (f.downloadState != DriveDownloadState.done || f.localPath == null) continue;
-        final destPath = '$finalDir/${f.fileName}';
+        final destPath = '$finalDir/${safeFsName(f.fileName)}';
         if (f.localPath != destPath) {
           final srcFile = File(f.localPath!);
           if (await srcFile.exists()) {
