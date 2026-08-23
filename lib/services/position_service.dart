@@ -50,24 +50,32 @@ class PositionService {
             status TEXT
           )
         ''');
-        await _createDriveTables(db);
-        await _createBookmarksTable(db);
+        await createDriveTables(db);
+        await createBookmarksTable(db);
       },
-      onUpgrade: (db, oldVersion, newVersion) async {
-        if (oldVersion < 2) {
-          await _createDriveTables(db);
-        }
-        if (oldVersion < 3) {
-          await db.execute('ALTER TABLE positions ADD COLUMN status TEXT');
-        }
-        if (oldVersion < 4) {
-          await _createBookmarksTable(db);
-        }
-      },
+      onUpgrade: (db, oldVersion, newVersion) =>
+          performUpgrades(db, oldVersion),
     );
   }
 
-  Future<void> _createBookmarksTable(Database db) async {
+  /// The production upgrade chain, exposed for tests: the real onUpgrade
+  /// delegates here, so tests exercise exactly what ships. Each step is
+  /// additive and idempotent per version gate.
+  @visibleForTesting
+  static Future<void> performUpgrades(Database db, int oldVersion) async {
+    if (oldVersion < 2) {
+      await createDriveTables(db);
+    }
+    if (oldVersion < 3) {
+      await db.execute('ALTER TABLE positions ADD COLUMN status TEXT');
+    }
+    if (oldVersion < 4) {
+      await createBookmarksTable(db);
+    }
+  }
+
+  @visibleForTesting
+  static Future<void> createBookmarksTable(Database db) async {
     await db.execute('''
       CREATE TABLE bookmarks (
         id           INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -83,7 +91,8 @@ class PositionService {
         'CREATE INDEX idx_bookmarks_book_path ON bookmarks(book_path)');
   }
 
-  Future<void> _createDriveTables(Database db) async {
+  @visibleForTesting
+  static Future<void> createDriveTables(Database db) async {
     await db.execute('''
       CREATE TABLE drive_books (
         folder_id       TEXT PRIMARY KEY,

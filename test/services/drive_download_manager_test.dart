@@ -1,92 +1,27 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 import 'package:kowhai/services/drive_book_repository.dart';
 import 'package:kowhai/services/drive_download_manager.dart';
 import 'package:kowhai/services/drive_service.dart';
 import 'package:kowhai/services/position_service.dart';
+import '../helpers/fixtures.dart';
 
 Future<({PositionService positionService, DriveBookRepository repo})>
     _makeRepo() async {
-  final db = await databaseFactoryFfi.openDatabase(
-    inMemoryDatabasePath,
-    options: OpenDatabaseOptions(
-      version: 3,
-      singleInstance: false,
-      onCreate: (db, _) async {
-        await db.execute('''
-          CREATE TABLE positions (
-            book_path TEXT PRIMARY KEY,
-            chapter_index INTEGER NOT NULL DEFAULT 0,
-            position_ms INTEGER NOT NULL DEFAULT 0,
-            global_position_ms INTEGER NOT NULL DEFAULT 0,
-            total_duration_ms INTEGER NOT NULL DEFAULT 0,
-            updated_at INTEGER NOT NULL,
-            status TEXT
-          )
-        ''');
-        await db.execute('''
-          CREATE TABLE drive_books (
-            folder_id       TEXT PRIMARY KEY,
-            folder_name     TEXT NOT NULL,
-            root_folder_id  TEXT NOT NULL,
-            is_shared       INTEGER NOT NULL DEFAULT 0,
-            account_email   TEXT NOT NULL,
-            added_at        INTEGER NOT NULL,
-            cover_file_id   TEXT
-          )
-        ''');
-        await db.execute('''
-          CREATE TABLE drive_book_files (
-            folder_id       TEXT NOT NULL,
-            file_index      INTEGER NOT NULL,
-            file_id         TEXT NOT NULL,
-            file_name       TEXT NOT NULL,
-            mime_type       TEXT NOT NULL,
-            size_bytes      INTEGER NOT NULL DEFAULT 0,
-            download_state  TEXT NOT NULL DEFAULT 'none',
-            local_path      TEXT,
-            PRIMARY KEY (folder_id, file_index)
-          )
-        ''');
-      },
-    ),
-  );
-  final ps = PositionService.withDatabase(db);
+  final ps = await makePositionService();
   return (positionService: ps, repo: DriveBookRepository(ps));
 }
 
-DriveBookRecord _book(String folderId) => DriveBookRecord(
-      folderId: folderId,
-      folderName: 'Book $folderId',
-      rootFolderId: 'root',
-      isShared: false,
-      accountEmail: 'user@example.com',
-      addedAt: 1000,
-      audioFileIds: [],
-    );
+DriveBookRecord _book(String folderId) => testDriveBook(folderId);
 
-DriveFileRecord _fileRec(String folderId, int index, DriveDownloadState state) =>
-    DriveFileRecord(
-      folderId: folderId,
-      fileIndex: index,
-      fileId: '$folderId-$index',
-      fileName: 'track$index.mp3',
-      mimeType: 'audio/mpeg',
-      sizeBytes: 1024,
-      downloadState: state,
-      localPath: '/path/$folderId/track$index.mp3',
-    );
+DriveFileRecord _fileRec(
+        String folderId, int index, DriveDownloadState state) =>
+    testDriveFile(folderId, index, state);
 
 DownloadQueueSnapshot _q(String id,
         {bool active = false, bool hasPending = true}) =>
-    DownloadQueueSnapshot(folderId: id, active: active, hasPending: hasPending);
+    queueSnapshot(id, active: active, hasPending: hasPending);
 
 void main() {
-  setUpAll(() {
-    sqfliteFfiInit();
-    databaseFactory = databaseFactoryFfi;
-  });
-
   group('resumeInterruptedDownloads', () {
     test('enqueues book with error-state files that are not fully done',
         () async {

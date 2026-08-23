@@ -8,6 +8,7 @@ import 'package:kowhai/locator.dart';
 import 'package:kowhai/models/audiobook.dart';
 import 'package:kowhai/services/audio_handler.dart';
 import 'package:kowhai/services/cast_controller.dart';
+import 'package:kowhai/services/drive_library_service.dart';
 import 'package:kowhai/services/position_persister.dart';
 import 'package:kowhai/services/position_service.dart';
 import 'package:kowhai/services/preferences_service.dart';
@@ -27,6 +28,7 @@ class FakeCastController implements CastController {
 
   bool casting = false;
   bool sessionStaysConnected = true;
+  Duration fakePosition = Duration.zero;
   final List<String> calls = [];
 
   @override
@@ -34,6 +36,14 @@ class FakeCastController implements CastController {
 
   @override
   bool get isSessionConnected => sessionStaysConnected;
+
+  @override
+  Duration get position => fakePosition;
+
+  @override
+  Future<void> seekAbsolute(Duration p) async {
+    calls.add('seekAbsolute');
+  }
 
   @override
   Future<void> start() async {
@@ -49,6 +59,19 @@ class FakeCastController implements CastController {
 
   @override
   void listenForSessions() {}
+
+  @override
+  dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
+}
+
+/// Recording no-op DriveLibraryService for removal-scheduler wiring.
+class FakeDriveLibraryService implements DriveLibraryService {
+  final deleted = <String>[];
+
+  @override
+  Future<void> deleteLocalFiles(String folderId) async {
+    deleted.add(folderId);
+  }
 
   @override
   dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
@@ -288,6 +311,66 @@ void main() {
       expect(saveCount, 0,
           reason: 'while casting, the cast owns the final save — the local '
               'persister must not double-save');
+    });
+
+    group('playback completion', () {
+      late FakeDriveLibraryService fakeDriveLibrary;
+
+      setUp(() {
+        fakeDriveLibrary = FakeDriveLibraryService();
+        locator.registerLazySingleton<DriveLibraryService>(
+            () => fakeDriveLibrary);
+      });
+
+      test(
+          'reaching the end marks the book finished and persists final position',
+          () async {
+        fakeCast.sessionStaysConnected = false; // local playback scenario
+        await handler.loadBook(_book('/books/finishing'));
+
+        // just_audio fires completed on the processing-state stream; the
+        // player's position getter at that moment is whatever it reports.
+        when(mockPlayer.position).thenReturn(const Duration(minutes: 10));
+        when(mockPlayer.currentIndex).thenReturn(0);
+        processingController.add(ProcessingState.completed);
+        await Future.delayed(Duration.zero);
+
+        expect(
+            await positionService.getBookStatus('/books/finishing'),
+            BookStatus.finished,
+            reason: 'completion must persist an explicit finished status — '
+                'which (post-J1) later position saves can no longer wipe');
+        expect(saveCount, greaterThanOrEqualTo(1),
+            reason: 'a completion save must land');
+      });
+
+      test('skipToNext seeks to the next chapter start', () async {
+        fakeCast.sessionStaysConnected = false; // local playback scenario
+        final book = Audiobook(
+          title: '/books/chapters',
+          path: '/books/chapters',
+          audioFiles: const ['f.mp3'],
+          chapterDurations: const [
+            Duration(minutes: 5),
+            Duration(minutes: 5),
+          ],
+          chapters: const [
+            Chapter(title: 'One', start: Duration.zero),
+            Chapter(title: 'Two', start: Duration(minutes: 5)),
+          ],
+        );
+        await handler.loadBook(book);
+
+        final seeks = <Duration>[];
+        when(mockPlayer.seek(any)).thenAnswer((invocation) async {
+          seeks.add(invocation.positionalArguments[0] as Duration);
+        });
+        when(mockPlayer.position).thenReturn(const Duration(seconds: 30));
+
+        await handler.skipToNext();
+
+        expect(seeks, [const Duration(minutes: 5)]);
+      });
     });
   });
 }

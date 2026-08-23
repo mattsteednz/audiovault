@@ -1,53 +1,47 @@
+import 'package:fake_async/fake_async.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 import 'package:kowhai/models/audiobook.dart';
 import 'package:kowhai/services/position_persister.dart';
 import 'package:kowhai/services/position_service.dart';
 import 'package:kowhai/utils/formatters.dart';
+import '../helpers/fixtures.dart';
 
-/// In-memory PositionService backed by the production schema (v3).
-Future<PositionService> _makeService() async {
-  final db = await databaseFactoryFfi.openDatabase(
-    inMemoryDatabasePath,
-    options: OpenDatabaseOptions(
-      version: 3,
-      singleInstance: false,
-      onCreate: (db, _) async {
-        await db.execute('''
-          CREATE TABLE positions (
-            book_path TEXT PRIMARY KEY,
-            chapter_index INTEGER NOT NULL DEFAULT 0,
-            position_ms INTEGER NOT NULL DEFAULT 0,
-            global_position_ms INTEGER NOT NULL DEFAULT 0,
-            total_duration_ms INTEGER NOT NULL DEFAULT 0,
-            updated_at INTEGER NOT NULL,
-            status TEXT
-          )
-        ''');
-      },
-    ),
-  );
-  return PositionService.withDatabase(db);
+/// Records every save synchronously so timer tests can run under fake_async
+/// (a real sqflite connection needs the real event loop).
+class _FakePositionService implements PositionService {
+  final savedPaths = <String>[];
+
+  @override
+  Future<void> savePosition({
+    required String bookPath,
+    required int chapterIndex,
+    required Duration position,
+    required int globalPositionMs,
+    required int totalDurationMs,
+  }) async {
+    savedPaths.add(bookPath);
+  }
+
+  @override
+  dynamic noSuchMethod(Invocation invocation) =>
+      super.noSuchMethod(invocation);
 }
+
+/// In-memory PositionService backed by the current production schema.
+Future<PositionService> _makeService() => makePositionService();
 
 Audiobook _book({
   String path = '/books/test',
   List<Duration> chapterDurations = const [],
   Duration? duration,
 }) =>
-    Audiobook(
-      title: 'Test',
+    testBook(
       path: path,
-      audioFiles: const [],
       chapterDurations: chapterDurations,
       duration: duration,
     );
 
 void main() {
-  setUpAll(() {
-    sqfliteFfiInit();
-  });
-
   group('globalToChapterPosition', () {
     test('returns zero chapter/offset for zero or negative input', () {
       expect(globalToChapterPosition(0, [const Duration(minutes: 10)]),
@@ -308,25 +302,51 @@ void main() {
       expect(persister.isRunning, isFalse);
     });
 
-    test('stopPeriodic cancels the timer cleanly', () async {
-      final svc = await _makeService();
-      var saveCount = 0;
-      final persister = PositionPersister(
-        positionService: svc,
-        getBook: () {
-          saveCount++;
-          return null; // no-op save, but we count the attempt
-        },
-        readPosition: () => (chapterIndex: 0, position: Duration.zero),
-        interval: const Duration(milliseconds: 20),
-      );
-      persister.startPeriodic();
-      await Future.delayed(const Duration(milliseconds: 70));
-      persister.stopPeriodic();
-      final after = saveCount;
-      await Future.delayed(const Duration(milliseconds: 60));
-      expect(saveCount, after, reason: 'no saves after stopPeriodic');
-      expect(after, greaterThanOrEqualTo(2));
+    test('stopPeriodic cancels the timer cleanly', () {
+      fakeAsync((async) {
+        final svc = _FakePositionService();
+        var attempts = 0;
+        final persister = PositionPersister(
+          positionService: svc,
+          getBook: () {
+            attempts++;
+            return null; // no-op save, but we count the attempt
+          },
+          readPosition: () => (chapterIndex: 0, position: Duration.zero),
+          interval: const Duration(milliseconds: 20),
+        );
+        persister.startPeriodic();
+        async.elapse(const Duration(milliseconds: 70));
+        persister.stopPeriodic();
+        final after = attempts;
+        async.elapse(const Duration(milliseconds: 60));
+        expect(attempts, after, reason: 'no saves attempted after stopPeriodic');
+        expect(after, greaterThanOrEqualTo(2));
+      });
+    });
+
+    test('periodic ticks persist through the service until stopped', () {
+      fakeAsync((async) {
+        final svc = _FakePositionService();
+        final persister = PositionPersister(
+          positionService: svc,
+          getBook: () => _book(path: '/books/tick'),
+          readPosition: () => (chapterIndex: 0, position: Duration.zero),
+          interval: const Duration(milliseconds: 50),
+        );
+        persister.startPeriodic();
+        async.elapse(const Duration(milliseconds: 160));
+        async.flushMicrotasks();
+        expect(svc.savedPaths.where((p) => p == '/books/tick').length,
+            greaterThanOrEqualTo(2));
+
+        persister.stopPeriodic();
+        final countAtStop = svc.savedPaths.length;
+        async.elapse(const Duration(milliseconds: 100));
+        async.flushMicrotasks();
+        expect(svc.savedPaths.length, countAtStop,
+            reason: 'no writes after stopPeriodic');
+      });
     });
 
     test('dispose stops the timer', () async {
