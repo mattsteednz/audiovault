@@ -41,6 +41,23 @@ const _noRoleOpf = '''<?xml version="1.0" encoding="utf-8"?>
 
 const _malformedOpf = 'this is not xml <<< !!!';
 
+/// Dublin Core declared as the DEFAULT namespace (no `dc:` prefixes) — the
+/// layout produced by some minimal EPUB-derived OPF writers.
+const _defaultNamespaceOpf = '''<?xml version="1.0" encoding="utf-8"?>
+<package xmlns="http://www.idpf.org/2007/opf" version="2.0">
+  <metadata xmlns="http://purl.org/dc/elements/1.1/">
+    <title>Default Namespace Book</title>
+    <creator>Default Ns Author</creator>
+    <creator role="nrt">Default Ns Narrator</creator>
+    <description>Desc</description>
+    <publisher>Pub</publisher>
+    <language>en</language>
+    <date>1999-01-01</date>
+    <meta name="calibre:series" content="Series X"/>
+    <meta name="calibre:series_index" content="2.0"/>
+  </metadata>
+</package>''';
+
 const _emptyMetadataOpf = '''<?xml version="1.0" encoding="utf-8"?>
 <package xmlns="http://www.idpf.org/2007/opf" version="2.0">
   <metadata xmlns:dc="http://purl.org/dc/elements/1.1/"/>
@@ -80,6 +97,19 @@ void main() {
       final opf = parseOpf(_noRoleOpf);
       expect(opf.author, 'Default Author');
       expect(opf.narrator, isNull);
+    });
+
+    test('default-namespace OPF (no dc: prefixes) populates all fields', () {
+      final opf = parseOpf(_defaultNamespaceOpf);
+      expect(opf.title, 'Default Namespace Book');
+      expect(opf.author, 'Default Ns Author');
+      expect(opf.narrator, 'Default Ns Narrator');
+      expect(opf.description, 'Desc');
+      expect(opf.publisher, 'Pub');
+      expect(opf.language, 'en');
+      expect(opf.releaseDate, '1999');
+      expect(opf.series, 'Series X');
+      expect(opf.seriesIndex, 2);
     });
 
     test('malformed XML returns empty OpfMetadata without throwing', () {
