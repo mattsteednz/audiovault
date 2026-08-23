@@ -45,13 +45,31 @@ class BookCover extends StatelessWidget {
     Color(0xFF8A5C5C), // muted rose
     Color(0xFF5C8A8A), // muted teal
     Color(0xFF6B6B8A), // muted periwinkle
+    Color(0xFF7A6B5C), // muted umber
+    Color(0xFF5C6B7A), // muted slate
+    Color(0xFF8A6B7A), // muted dusty pink
+    Color(0xFF6B7A5C), // muted fern
+    Color(0xFF7A5C6B), // muted plum
+    Color(0xFF5C7A6B), // muted seafoam
+    Color(0xFF8A8A5C), // muted khaki
+    Color(0xFF6B5C8A), // muted violet
   ];
 
   Color _placeholderColor() {
     // Use the book path as the hash source — stable across sort order changes
     // and consistent between the library grid/list and the player screen.
-    final hash = book.path.codeUnits.fold(0, (h, c) => h * 31 + c);
-    return placeholderPalette[hash.abs() % placeholderPalette.length];
+    // Mix with xorshift so books that share a long path prefix (same library
+    // folder) still get well-spread colours.
+    var h = 0;
+    for (final c in book.path.codeUnits) {
+      h = h * 31 + c;
+    }
+    // xorshift finalisation — avalanches the low bits so nearby paths
+    // (differing only in the last few characters) land on different colours.
+    h ^= h >> 17;
+    h ^= h << 13;
+    h ^= h >> 7;
+    return placeholderPalette[h.abs() % placeholderPalette.length];
   }
 
   @override

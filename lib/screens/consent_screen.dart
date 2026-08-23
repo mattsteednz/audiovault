@@ -32,9 +32,9 @@ class ConsentScreen extends StatelessWidget {
               ),
               const SizedBox(height: 16),
               Text(
-                'We use Google Firebase to collect crash reports and track that '
-                'you\'re using the app. No personal data like book titles or '
-                'files are ever sent. You can opt out anytime.',
+                'We use Google Firebase to collect crash reports and understand '
+                'which features are most important. No personal data like book '
+                'titles or files are ever sent. You can opt out anytime.',
                 style: theme.textTheme.bodyLarge?.copyWith(
                   color:
                       theme.colorScheme.onSurface.withValues(alpha: 0.75),
