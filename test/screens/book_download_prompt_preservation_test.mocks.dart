@@ -583,6 +583,15 @@ class MockPositionService extends _i1.Mock implements _i13.PositionService {
       ) as _i7.Future<void>);
 
   @override
+  _i7.Future<bool> repairFromGlobal(_i9.Audiobook? book) => (super.noSuchMethod(
+        Invocation.method(
+          #repairFromGlobal,
+          [book],
+        ),
+        returnValue: _i7.Future<bool>.value(false),
+      ) as _i7.Future<bool>);
+
+  @override
   _i7.Future<({int chapterIndex, Duration position})?> getPosition(
           String? bookPath) =>
       (super.noSuchMethod(
@@ -719,7 +728,9 @@ class MockPositionService extends _i1.Mock implements _i13.PositionService {
       List<
           ({
             String bookPath,
+            int chapterIndex,
             int globalPositionMs,
+            int positionMs,
             int totalDurationMs,
             int updatedAt
           })>> getAllPositions() => (super.noSuchMethod(
@@ -731,12 +742,16 @@ class MockPositionService extends _i1.Mock implements _i13.PositionService {
             List<
                 ({
                   String bookPath,
+                  int chapterIndex,
                   int globalPositionMs,
+                  int positionMs,
                   int totalDurationMs,
                   int updatedAt
                 })>>.value(<({
           String bookPath,
+          int chapterIndex,
           int globalPositionMs,
+          int positionMs,
           int totalDurationMs,
           int updatedAt
         })>[]),
@@ -744,7 +759,9 @@ class MockPositionService extends _i1.Mock implements _i13.PositionService {
           List<
               ({
                 String bookPath,
+                int chapterIndex,
                 int globalPositionMs,
+                int positionMs,
                 int totalDurationMs,
                 int updatedAt
               })>>);
