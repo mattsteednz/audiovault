@@ -8,6 +8,7 @@ import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 import 'package:kowhai/models/audiobook.dart';
 import 'package:kowhai/services/drive_book_repository.dart';
 import 'package:kowhai/services/drive_download_manager.dart';
+import 'package:kowhai/services/download_progress_tracker.dart';
 import 'package:kowhai/services/drive_library_service.dart';
 import 'package:kowhai/services/drive_service.dart';
 import 'package:kowhai/services/position_service.dart';
@@ -99,14 +100,18 @@ Future<({PositionService positionService, DriveBookRepository repo})>
 }
 
 DriveLibraryService _makeService(
-        DriveBookRepository repo, _StubPrefs prefs) =>
-    DriveLibraryService(
-      repo,
-      DriveService(),
-      DriveDownloadManager(repo, DriveService()),
-      prefs,
-      _NullScanner(),
-    );
+    DriveBookRepository repo, _StubPrefs prefs) {
+  final tracker =
+      DownloadProgressTracker(repository: repo, manager: DriveDownloadManager(repo, DriveService()));
+  return DriveLibraryService(
+    repo,
+    DriveService(),
+    DriveDownloadManager(repo, DriveService()),
+    prefs,
+    _NullScanner(),
+    tracker,
+  );
+}
 
 // ---------------------------------------------------------------------------
 // Helpers

@@ -27,6 +27,49 @@ class DriveDownloadEvent {
   });
 }
 
+/// Rate-limits in-flight progress emissions AT SOURCE so UI listeners (and
+/// the tracker) aren't flooded per TCP chunk. Terminal states bypass.
+///
+/// Emits when EITHER the minimum interval elapsed OR progress moved by at
+/// least [minFraction]. Unknown totals fall back to byte-delta-only gating.
+class ProgressThrottle {
+  ProgressThrottle({
+    this.minInterval = const Duration(milliseconds: 100),
+    this.minFraction = 0.01,
+    this.minBytesUnknownTotal = 64 * 1024,
+    DateTime Function()? clock,
+  }) : _now = clock ?? DateTime.now;
+
+  final Duration minInterval;
+  final double minFraction;
+  final int minBytesUnknownTotal;
+  final DateTime Function() _now;
+
+  DateTime? _lastEmit;
+  int _lastReceived = -1;
+
+  /// Returns true if a progress update with [received]/[total] may emit now.
+  bool shouldEmit(int received, int total) {
+    if (_lastEmit == null || _lastReceived < 0) {
+      _mark(received);
+      return true;
+    }
+    final elapsed = _now().difference(_lastEmit!);
+    final delta = received - _lastReceived;
+    final allowed = total > 0
+        ? elapsed >= minInterval ||
+            (delta > 0 && delta / total >= minFraction)
+        : elapsed >= minInterval || delta >= minBytesUnknownTotal;
+    if (allowed) _mark(received);
+    return allowed;
+  }
+
+  void _mark(int received) {
+    _lastEmit = _now();
+    _lastReceived = received;
+  }
+}
+
 class DriveDownloadManager {
   final DriveBookRepository _repo;
   final DriveService _driveService;
@@ -263,14 +306,19 @@ class DriveDownloadManager {
         final sink = file.openWrite();
         int received = 0;
         final total = response.contentLength ?? 0;
+        final throttle = ProgressThrottle();
 
         try {
           await for (final chunk in response.stream
               .timeout(const Duration(seconds: 30))) {
             sink.add(chunk);
             received += chunk.length;
-            onProgress?.call(received, total);
+            if (throttle.shouldEmit(received, total)) {
+              onProgress?.call(received, total);
+            }
           }
+          // Final exact count always reported (terminal, bypasses throttle).
+          if (received != 0) onProgress?.call(received, total);
         } catch (_) {
           await sink.close();
           // Delete partial file so a retry starts fresh.
