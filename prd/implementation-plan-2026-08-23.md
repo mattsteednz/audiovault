@@ -14,10 +14,12 @@ master's status line updated, and always finish a work session with
 - CHANGELOG.md + README.md updates ride along on user-visible changes.
 
 ## Pre-work state recovered (DONE)
-- Working tree had ORPHANED improvements existing nowhere in git:
-  xorshift placeholder hash + palette extension, consent copy, lock bump.
-  → committed on `fix/preserve-polish` (db8b24e) + .kiro_tmp removal (67b6547).
-  PUSH+PR THIS BRANCH FIRST.
+- ENV CONSTRAINT: this workspace's git credentials (geometric-dev) have NO push
+  access to origin (403 on mattsteednz/audiovault). All chunks are therefore
+  committed as LOCAL BRANCHES ONLY, stacked on fix/preserve-polish. Owner must
+  push + open PRs (one per chunk) from their own machine; CLAUDE.md's
+  push→PR→auto-merge step is deferred to the owner. Verify each branch passes
+  CI once pushed.
 - Local `main` was stale/diverged; reset to origin/main (b3b3abe). Old unique
   commit 21ff24a content verified already present on origin/main.
 - Stale local branches seen: chore/code-review-chunk4, chore/kowhai-rebrand,

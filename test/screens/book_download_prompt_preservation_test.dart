@@ -757,4 +757,62 @@ void main() {
       );
     },
   );
+
+  // ── Property 6: Gating — "Start listening" respects download state ──────────
+  //
+  // Requirement 1.2
+  //
+  // Tapping "Start listening" on an UNDOWNLOADED Drive book MUST show the
+  // download prompt sheet instead of navigating to PlayerScreen. Ported from
+  // the retired exploration suite ("Bug B") so the regression coverage lives
+  // in this durable file rather than a scratch artifact.
+
+  group(
+    'Property 6: "Start listening" gates undownloaded books (Requirement 1.2)',
+    () {
+      testWidgets(
+        '"Start listening" shows download sheet (not PlayerScreen) for '
+        'undownloaded Drive book',
+        (tester) async {
+          stubConnectivity([ConnectivityResult.wifi]);
+
+          await tester.pumpWidget(wrapWithApp(
+            BookDetailsScreen(book: undownloadedDriveBook),
+          ));
+          await tester.pump();
+          await tester.pump(const Duration(milliseconds: 200));
+
+          final startListeningButton = find.text('Start listening');
+          expect(startListeningButton, findsOneWidget,
+              reason: 'Could not find the "Start listening" button.');
+
+          await tester.tap(startListeningButton);
+          await tester.pump();
+          await tester.pump(const Duration(milliseconds: 200));
+          await tester.pump(const Duration(milliseconds: 200));
+
+          // PlayerScreen must NOT be pushed.
+          expect(
+            find.byType(PlayerScreen),
+            findsNothing,
+            reason:
+                'Expected PlayerScreen NOT to be pushed when tapping '
+                '"Start listening" on an undownloaded Drive book.',
+          );
+
+          // The download sheet MUST be shown instead.
+          expect(
+            find.byType(BottomSheet),
+            findsOneWidget,
+            reason:
+                'Expected the download bottom sheet when tapping '
+                '"Start listening" on an undownloaded Drive book.',
+          );
+
+          // Download must not begin without user confirmation.
+          verifyNever(mockDriveLibraryService.startDownload('folder-123'));
+        },
+      );
+    },
+  );
 }
