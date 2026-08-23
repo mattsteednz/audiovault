@@ -2,6 +2,30 @@
 
 All notable changes to Kōwhai Audiobook Player are documented here.
 
+## [2.1.0] - 2026-08-23
+
+### Added
+- **Correct multi-device resume** - Restoring positions from Google Drive now resumes at the exact chapter and offset instead of the start of the book. Legacy rows repair themselves on the next library scan.
+- **Chapter-level position backup (JSON v2)** - Backups record per-chapter offsets going forward. Backups written by 2.1.0 import fine into future versions; restoring a 2.1.0 backup into an older build falls back to approximate progress.
+- **Bookmark undo** - Deleting a bookmark offers a short Undo snackbar.
+- **Persisted filters & view mode** - Progress-filter pills and grid/list choice are remembered across sessions.
+
+### Fixed
+- Download cancel/retry races hardened; cancelled jobs can no longer resurrect mid-queue.
+- Drive folder/file names with filesystem-hostile characters are sanitised before use as local paths.
+- M4B chapter ordering and FullBox metadata parsing fixes; OPF lookups no longer require namespaces.
+- Startup recovery no longer blocks first frame; consent revocation now fully stops collection; cast URLs are redacted from logs.
+
+### Changed
+- **Performance on large libraries** - Metadata scanning runs in background-isolate chunks; covers decode at display-sized resolution; mini-player/sleep-timer rebuilds scoped.
+- Live scan-phase labels; search debounced; download-progress events throttled at source.
+- CI pins Flutter (3.44.4), adds a non-blocking Android build canary; MIT LICENSE added; internal naming unified under Kowhai.
+
+### Under the hood
+- Download progress unified behind a single tracker; library screen decomposed into focused modules; ~60 new tests (suite: 415 green).
+
+---
+
 ## [Unreleased]
 
 ### Added

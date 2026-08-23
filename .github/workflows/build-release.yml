@@ -43,12 +43,28 @@ jobs:
       - name: Install dependencies
         run: flutter pub get
 
+      - name: Verify tag matches pubspec version
+        run: |
+          PUBSPEC_VERSION="$(grep '^version:' pubspec.yaml | cut -d' ' -f2 | cut -d+ -f1)"
+          TAG_VERSION="${GITHUB_REF_NAME#v}"
+          if [ "$PUBSPEC_VERSION" != "$TAG_VERSION" ]; then
+            echo "::error::Tag v$TAG_VERSION does not match pubspec version $PUBSPEC_VERSION"
+            exit 1
+          fi
+
       - name: Build release APK
         env:
           KEYSTORE_PATH: ${{ runner.temp }}/kowhai-release.jks
         # run_number gives a monotonically increasing Android buildNumber so
         # sideload updates always install over previous releases.
         run: flutter build apk --release --build-number=${{ github.run_number }}
+
+      - name: Checksum APK
+        id: checksum
+        run: |
+          SHA="$(sha256sum build/app/outputs/flutter-apk/app-release.apk | cut -d' ' -f1)"
+          echo "sha256=$SHA" >> "$GITHUB_OUTPUT"
+          echo "$SHA  app-release.apk" > build/app/outputs/flutter-apk/app-release.apk.sha256
 
       - name: Extract version from tag
         id: version
@@ -60,4 +76,6 @@ jobs:
           tag_name: ${{ steps.version.outputs.tag }}
           name: Kōwhai ${{ steps.version.outputs.tag }}
           generate_release_notes: true
-          files: build/app/outputs/flutter-apk/app-release.apk
+          files: |
+            build/app/outputs/flutter-apk/app-release.apk
+            build/app/outputs/flutter-apk/app-release.apk.sha256
