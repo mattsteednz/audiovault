@@ -72,7 +72,7 @@ void main() async {
     GoogleCastContext.instance.setSharedInstanceWithOptions(options);
   } catch (e, st) {
     // Cast not available on this platform or emulator — app continues.
-    debugPrint('[AudioVault:Cast] init failed: $e\n$st');
+    debugPrint('[Kowhai:Cast] init failed: $e\n$st');
     // Fire-and-forget; telemetry is no-op if Firebase isn't ready yet.
     TelemetryService.recordNonFatal(e, st);
   }
@@ -105,27 +105,27 @@ void main() async {
     }
   }
 
-  runApp(AudioVaultApp(
+  runApp(KowhaiApp(
     audioHandler: audioHandler,
     themeModeNotifier: themeModeNotifier,
   ));
 }
 
-class AudioVaultApp extends StatefulWidget {
+class KowhaiApp extends StatefulWidget {
   final KowhaiHandler audioHandler;
   final ValueNotifier<ThemeMode> themeModeNotifier;
 
-  const AudioVaultApp({
+  const KowhaiApp({
     super.key,
     required this.audioHandler,
     required this.themeModeNotifier,
   });
 
   @override
-  State<AudioVaultApp> createState() => _AudioVaultAppState();
+  State<KowhaiApp> createState() => _KowhaiAppState();
 }
 
-class _AudioVaultAppState extends State<AudioVaultApp> {
+class _KowhaiAppState extends State<KowhaiApp> {
   AppLifecycleListener? _lifecycleListener;
 
   @override
