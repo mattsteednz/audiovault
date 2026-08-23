@@ -50,6 +50,7 @@ import 'package:kowhai/screens/library_screen.dart';
 import 'package:kowhai/screens/player_screen.dart';
 import 'package:kowhai/services/drive_book_repository.dart';
 import 'package:kowhai/services/drive_download_manager.dart';
+import 'package:kowhai/services/download_progress_tracker.dart';
 import 'package:kowhai/services/drive_library_service.dart';
 import 'package:kowhai/services/drive_service.dart';
 import 'package:kowhai/services/enrichment_service.dart';
@@ -192,6 +193,10 @@ void main() {
     // ── DriveDownloadManager ──────────────────────────────────────────────
     when(mockDriveDownloadManager.downloadEvents)
         .thenAnswer((_) => const Stream.empty());
+
+    // ── DownloadProgressTracker (real instance over mocked collaborators) ──
+    locator.registerLazySingleton<DownloadProgressTracker>(
+        () => DownloadProgressTracker());
 
     // ── PreferencesService ────────────────────────────────────────────────
     // LibraryScreen loads the persisted status filter during _initLibrary.

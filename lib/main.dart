@@ -16,6 +16,7 @@ import 'services/position_backup_service.dart';
 import 'services/position_service.dart';
 import 'services/preferences_service.dart';
 import 'services/telemetry_service.dart';
+import 'services/download_progress_tracker.dart';
 import 'firebase_options.dart';
 import 'widgets/audio_handler_scope.dart';
 import 'locator.dart';
@@ -108,10 +109,12 @@ void main() async {
 
 /// Background recovery work that must not block startup:
 /// * reset stale 'downloading' states left by a process kill
+/// * resync the download-progress tracker with post-recovery reality
 /// * restore positions from Drive on a fresh install when sync is enabled
 Future<void> _deferredStartupRecovery(PreferencesService prefs) async {
   try {
     await locator<DriveBookRepository>().resetStaleDownloads();
+    await locator<DownloadProgressTracker>().reseedAll();
   } catch (e) {
     debugPrint('[Kowhai:Startup] resetStaleDownloads failed: $e');
   }

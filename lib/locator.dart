@@ -2,6 +2,7 @@ import 'package:get_it/get_it.dart';
 
 import 'services/drive_book_repository.dart';
 import 'services/drive_download_manager.dart';
+import 'services/download_progress_tracker.dart';
 import 'services/drive_library_service.dart';
 import 'services/drive_service.dart';
 import 'services/enrichment_service.dart';
@@ -34,6 +35,8 @@ void setupLocator() {
             locator<DriveBookRepository>(),
             locator<DriveService>(),
           ));
+  locator.registerLazySingleton<DownloadProgressTracker>(
+      () => DownloadProgressTracker());
   locator.registerLazySingleton<DriveLibraryService>(
       () => DriveLibraryService(
             locator<DriveBookRepository>(),
@@ -41,5 +44,8 @@ void setupLocator() {
             locator<DriveDownloadManager>(),
             locator<PreferencesService>(),
             locator<ScannerService>(),
+            locator<DownloadProgressTracker>(),
           ));
+  // Single event subscription lives here; UI reads tracker listenables.
+  locator<DownloadProgressTracker>().attach();
 }

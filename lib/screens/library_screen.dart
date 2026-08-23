@@ -7,7 +7,6 @@ import '../models/audiobook.dart';
 import '../models/availability_filter_state.dart';
 import '../services/audio_handler.dart';
 import '../services/drive_book_repository.dart';
-import '../services/drive_download_manager.dart';
 import '../services/drive_library_service.dart';
 import '../services/drive_service.dart';
 import '../utils/formatters.dart';
@@ -26,6 +25,7 @@ import 'history_screen.dart';
 import 'player_screen.dart';
 import 'settings_screen.dart';
 import '../locator.dart';
+import '../services/download_progress_tracker.dart';
 import '../utils/drive_download_sheet.dart';
 
 enum _ViewMode { grid, list }
@@ -290,15 +290,16 @@ Timer? _searchDebounce;
   final Map<String, String> _downloadSizeLabels = {};
 
   // Drive books currently being downloaded (tracked by folderId).
-  final Set<String> _downloadingFolderIds = {};
+  
 
   // Currently-active book tracking (for badge).
   String? _activePath;
   bool _isPlaying = false;
   StreamSubscription<PlaybackState>? _playbackSub;
   StreamSubscription<({String bookPath, String coverPath})>? _enrichSub;
-  StreamSubscription<DriveDownloadEvent>? _driveSub;
+  VoidCallback? _downloadingSetListener;
 
+  late final DownloadProgressTracker _tracker;
   late final KowhaiHandler _audioHandler;
   bool _didInit = false;
 
@@ -310,7 +311,15 @@ Timer? _searchDebounce;
       _audioHandler = AudioHandlerScope.of(context).audioHandler;
       _initLibrary();
       _enrichSub = locator<EnrichmentService>().onCoverFetched.listen(_onCoverFetched);
-      _driveSub = locator<DriveDownloadManager>().downloadEvents.listen(_onDriveDownloadEvent);
+      // Progress state flows through the shared tracker; this screen only
+      // reacts to completion (promote/refresh) and the busy-set for tiles.
+      _tracker = locator<DownloadProgressTracker>();
+      _tracker.onBookCompleted = _refreshDriveBook;
+      _tracker.onCoverCompleted = _refreshDriveBook;
+      _downloadingSetListener = () {
+        if (mounted) setState(() {});
+      };
+      _tracker.downloadingFolders.addListener(_downloadingSetListener!);
       _playbackSub = _audioHandler.playbackState.listen((state) {
         final newPath = _audioHandler.currentBook?.path;
         if (newPath != _activePath || state.playing != _isPlaying) {
@@ -327,7 +336,13 @@ Timer? _searchDebounce;
   void dispose() {
     _playbackSub?.cancel();
     _enrichSub?.cancel();
-    _driveSub?.cancel();
+    if (_downloadingSetListener != null) {
+      _tracker.downloadingFolders.removeListener(_downloadingSetListener!);
+    }
+    if (_tracker.onBookCompleted == _refreshDriveBook) {
+      _tracker.onBookCompleted = null;
+      _tracker.onCoverCompleted = null;
+    }
     _searchDebounce?.cancel();
     _searchController.dispose();
     super.dispose();
@@ -574,41 +589,7 @@ Timer? _searchDebounce;
     _applySort();
   }
 
-  void _onDriveDownloadEvent(DriveDownloadEvent event) {
-    if (event.fileIndex == null) {
-      // Cover download — still refresh on done for cover art.
-      if (event.state == DriveDownloadState.done) {
-        _refreshDriveBook(event.folderId).catchError((Object e, StackTrace st) {
-          debugPrint('[LibraryScreen] _refreshDriveBook failed: $e\n$st');
-        });
-      }
-      return;
-    }
-    // Track downloading state for the list-view menu.
-    if (event.state == DriveDownloadState.downloading) {
-      if (_downloadingFolderIds.add(event.folderId)) setState(() {});
-    } else if (event.state == DriveDownloadState.done) {
-      // Refresh on audio file done so cover art and metadata update.
-      _refreshDriveBook(event.folderId).catchError((Object e, StackTrace st) {
-        debugPrint('[LibraryScreen] _refreshDriveBook failed: $e\n$st');
-      });
-      // Check if all files are now done — if so, remove from downloading set.
-      _checkDownloadComplete(event.folderId);
-    } else if (event.state == DriveDownloadState.error) {
-      _checkDownloadComplete(event.folderId);
-    }
-  }
-
-  Future<void> _checkDownloadComplete(String folderId) async {
-    final files = await locator<DriveBookRepository>().getFilesForBook(folderId);
-    final stillDownloading = files.any(
-        (f) => f.downloadState == DriveDownloadState.downloading);
-    if (!stillDownloading && _downloadingFolderIds.remove(folderId)) {
-      if (mounted) setState(() {});
-    }
-  }
-
-  Future<void> _refreshDriveBook(String folderId) async {
+Future<void> _refreshDriveBook(String folderId) async {
     final driveLibService = locator<DriveLibraryService>();
     final driveRepo = locator<DriveBookRepository>();
     final files = await driveRepo.getFilesForBook(folderId);
@@ -1473,7 +1454,7 @@ Timer? _searchDebounce;
           final book = books[i];
           final folderId = book.driveMetadata?.folderId;
           final downloading = folderId != null &&
-              _downloadingFolderIds.contains(folderId);
+              _tracker.downloadingFolders.value.contains(folderId);
           return AudiobookListTile(
             book: book,
             isActive: book.path == _activePath && _isPlaying,
@@ -1492,7 +1473,6 @@ Timer? _searchDebounce;
                     final cancelled =
                         await showDriveDownloadProgressSheet(context, book);
                     if (cancelled == true) {
-                      _downloadingFolderIds.remove(folderId);
                       _refreshDriveBook(folderId);
                     }
                   }

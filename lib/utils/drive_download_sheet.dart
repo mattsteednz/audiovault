@@ -1,29 +1,20 @@
-import 'dart:async';
-
 import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:flutter/material.dart';
 
 import '../locator.dart';
 import '../models/audiobook.dart';
-import '../services/drive_book_repository.dart';
 import '../services/drive_download_manager.dart';
+import '../services/download_progress_tracker.dart';
 import '../services/drive_library_service.dart';
-import 'formatters.dart';
+import '../utils/formatters.dart';
 
 /// Shows a bottom sheet prompting the user to download a Drive book.
 ///
-/// Always fetches [DriveLibraryService.totalSizeBytes] regardless of
-/// connectivity, so the formatted size is shown in both the prompt message
-/// and the Download button label on WiFi and mobile data alike.
+/// Fetches [DriveLibraryService.totalSizeBytes] regardless of connectivity so
+/// the formatted size appears in both the message and the Download button.
 ///
-/// When the device is on mobile data the sheet shows:
-///   "You're on mobile data. This book is X. Download anyway?"
-///
-/// When the device is on WiFi (or ethernet) the sheet shows:
-///   "This book is X. Download it to start listening."
-///
-/// The optional [connectivityOverride] parameter is used by tests to inject
-/// a known connectivity state without hitting the real network stack.
+/// The optional [connectivityOverride] parameter is used by tests to inject a
+/// known connectivity state without hitting the real network stack.
 Future<void> showDriveDownloadSheet(
   BuildContext context,
   Audiobook book, {
@@ -36,8 +27,7 @@ Future<void> showDriveDownloadSheet(
   final isWifi = connectivity.contains(ConnectivityResult.wifi) ||
       connectivity.contains(ConnectivityResult.ethernet);
 
-  // Always fetch the size — remove the former `if (!isWifi)` guard so the
-  // formatted size is available for both WiFi and mobile-data prompts.
+  // Always fetch the size so both prompts can show it.
   final sizeBytes =
       await locator<DriveLibraryService>().totalSizeBytes(folderId);
 
@@ -88,9 +78,9 @@ Future<void> showDriveDownloadSheet(
   );
 }
 
-
 /// Shows a bottom sheet for a Drive book that is currently downloading.
-/// Displays live progress and offers a "Cancel download" action.
+/// Displays live progress from the shared [DownloadProgressTracker] and
+/// offers a "Cancel download" action.
 ///
 /// Returns `true` if the user cancelled the download, `false` / `null`
 /// otherwise (sheet dismissed without action).
@@ -99,15 +89,8 @@ Future<bool?> showDriveDownloadProgressSheet(
   Audiobook book,
 ) async {
   final folderId = book.driveMetadata!.folderId;
-  final repo = locator<DriveBookRepository>();
-  final dlManager = locator<DriveDownloadManager>();
-
-  // Read initial state from DB.
-  final files = await repo.getFilesForBook(folderId);
-  final totalBytes = files.fold<int>(0, (s, f) => s + f.sizeBytes);
-  final doneBytes = files
-      .where((f) => f.downloadState == DriveDownloadState.done)
-      .fold<int>(0, (s, f) => s + f.sizeBytes);
+  final tracker = locator<DownloadProgressTracker>();
+  await tracker.ensureSeeded(folderId);
 
   if (!context.mounted) return null;
 
@@ -116,9 +99,6 @@ Future<bool?> showDriveDownloadProgressSheet(
     builder: (ctx) => _DownloadProgressSheet(
       book: book,
       folderId: folderId,
-      totalBytes: totalBytes,
-      initialDoneBytes: doneBytes,
-      dlManager: dlManager,
     ),
   );
 }
@@ -126,16 +106,10 @@ Future<bool?> showDriveDownloadProgressSheet(
 class _DownloadProgressSheet extends StatefulWidget {
   final Audiobook book;
   final String folderId;
-  final int totalBytes;
-  final int initialDoneBytes;
-  final DriveDownloadManager dlManager;
 
   const _DownloadProgressSheet({
     required this.book,
     required this.folderId,
-    required this.totalBytes,
-    required this.initialDoneBytes,
-    required this.dlManager,
   });
 
   @override
@@ -143,46 +117,27 @@ class _DownloadProgressSheet extends StatefulWidget {
 }
 
 class _DownloadProgressSheetState extends State<_DownloadProgressSheet> {
-  late int _completedBytes;
-  int _currentFileBytes = 0;
-  StreamSubscription<DriveDownloadEvent>? _sub;
-
-  double get _progress {
-    if (widget.totalBytes <= 0) return 0;
-    return ((_completedBytes + _currentFileBytes) / widget.totalBytes)
-        .clamp(0.0, 1.0);
-  }
+  late final FolderProgressNotifier _notifier;
 
   @override
   void initState() {
     super.initState();
-    _completedBytes = widget.initialDoneBytes;
-    _sub = widget.dlManager.downloadEvents
-        .where((e) => e.folderId == widget.folderId && e.fileIndex != null)
-        .listen(_onEvent);
+    _notifier = locator<DownloadProgressTracker>().listenableFor(widget.folderId)
+      ..addListener(_onChange);
   }
 
-  void _onEvent(DriveDownloadEvent event) {
-    if (!mounted) return;
-    setState(() {
-      if (event.state == DriveDownloadState.downloading) {
-        _currentFileBytes = event.bytesDownloaded ?? 0;
-      } else if (event.state == DriveDownloadState.done) {
-        _completedBytes += event.fileSizeBytes ?? 0;
-        _currentFileBytes = 0;
-        // If all done, dismiss the sheet.
-        if (_progress >= 1.0 && mounted) {
-          Navigator.pop(context, false);
-        }
-      } else if (event.state == DriveDownloadState.error) {
-        _currentFileBytes = 0;
-      }
-    });
+  void _onChange() {
+    final p = _notifier.value;
+    if (p != null && p.isComplete && mounted) {
+      Navigator.pop(context, false);
+    } else {
+      setState(() {});
+    }
   }
 
   @override
   void dispose() {
-    _sub?.cancel();
+    _notifier.removeListener(_onChange);
     super.dispose();
   }
 
@@ -220,7 +175,10 @@ class _DownloadProgressSheetState extends State<_DownloadProgressSheet> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final pct = (_progress * 100).toStringAsFixed(0);
+    final snap = _notifier.value ??
+        const BookDownloadProgress(folderId: '');
+    final progress = snap.overallProgress;
+    final pct = (progress * 100).toStringAsFixed(0);
 
     return Padding(
       padding: const EdgeInsets.all(24),
@@ -241,7 +199,7 @@ class _DownloadProgressSheetState extends State<_DownloadProgressSheet> {
                 child: ClipRRect(
                   borderRadius: BorderRadius.circular(4),
                   child: LinearProgressIndicator(
-                    value: _progress > 0 ? _progress : null,
+                    value: progress > 0 ? progress : null,
                     minHeight: 6,
                   ),
                 ),
@@ -256,8 +214,8 @@ class _DownloadProgressSheetState extends State<_DownloadProgressSheet> {
           ),
           const SizedBox(height: 8),
           Text(
-            'Downloading — ${formatBytes((_completedBytes + _currentFileBytes).clamp(0, widget.totalBytes))} '
-            'of ${formatBytes(widget.totalBytes)}',
+            'Downloading - ${formatBytes((snap.doneBytes + snap.currentFileBytes).clamp(0, snap.totalBytes))} '
+            'of ${formatBytes(snap.totalBytes)}',
             style: theme.textTheme.bodySmall?.copyWith(
               color: theme.colorScheme.onSurface.withValues(alpha: 0.6),
             ),

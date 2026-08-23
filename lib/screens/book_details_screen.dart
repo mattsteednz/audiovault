@@ -7,8 +7,8 @@ import 'package:path/path.dart' as p;
 import '../locator.dart';
 import '../models/audiobook.dart';
 import '../models/bookmark.dart';
-import '../services/drive_book_repository.dart';
 import '../services/drive_download_manager.dart';
+import '../services/download_progress_tracker.dart';
 import '../services/drive_library_service.dart';
 import '../services/position_service.dart';
 import '../widgets/audio_handler_scope.dart';
@@ -159,78 +159,50 @@ class _ActionButtons extends StatefulWidget {
 }
 
 class _ActionButtonsState extends State<_ActionButtons> {
-  StreamSubscription<DriveDownloadEvent>? _sub;
-  bool _isDownloading = false;
-  int _totalBookBytes = 0;
-  int _completedBytes = 0;
-  int _currentFileBytes = 0;
-  int _downloadedCount = 0;
-  int _totalCount = 0;
+  FolderProgressNotifier? _notifier;
 
-  double get _progress {
-    if (_totalBookBytes <= 0) return 0;
-    return ((_completedBytes + _currentFileBytes) / _totalBookBytes)
-        .clamp(0.0, 1.0);
+  BookDownloadProgress? get _progress =>
+      _notifier?.value ?? _seedFallback();
+
+  /// Pre-seed snapshot for the very first frames before the tracker's lazy
+  /// DB seed completes; derived from whatever the widget was handed.
+  BookDownloadProgress? _seedFallback() {
+    final meta = widget.book.driveMetadata;
+    if (meta == null) return null;
+    return BookDownloadProgress(
+      folderId: meta.folderId,
+      downloadedCount: widget.book.audioFiles.length,
+      totalCount: meta.totalFileCount,
+    );
   }
+
+  bool get _isDownloading => _progress?.anyDownloading ?? false;
 
   @override
   void initState() {
     super.initState();
-    if (widget.book.source == AudiobookSource.drive) {
-      _initDownloadState();
-      _sub = locator<DriveDownloadManager>()
-          .downloadEvents
-          .where((e) =>
-              e.folderId == widget.book.driveMetadata!.folderId &&
-              e.fileIndex != null)
-          .listen(_onEvent);
+    // R14 guard: source==drive with missing metadata is a boundary error —
+    // treat as non-Drive rather than crash.
+    final folderId = widget.book.driveMetadata?.folderId;
+    if (widget.book.source == AudiobookSource.drive && folderId != null) {
+      _notifier = locator<DownloadProgressTracker>().listenableFor(folderId)
+        ..addListener(_onChange);
+      locator<DownloadProgressTracker>().ensureSeeded(folderId);
     }
   }
 
-  Future<void> _initDownloadState() async {
-    final folderId = widget.book.driveMetadata!.folderId;
-    final files =
-        await locator<DriveBookRepository>().getFilesForBook(folderId);
-    if (!mounted) return;
-    final done =
-        files.where((f) => f.downloadState == DriveDownloadState.done).length;
-    setState(() {
-      _totalCount = files.length;
-      _downloadedCount = done;
-      _totalBookBytes = files.fold<int>(0, (s, f) => s + f.sizeBytes);
-      _completedBytes = files
-          .where((f) => f.downloadState == DriveDownloadState.done)
-          .fold<int>(0, (s, f) => s + f.sizeBytes);
-      _isDownloading =
-          files.any((f) => f.downloadState == DriveDownloadState.downloading);
-    });
-  }
-
-  void _onEvent(DriveDownloadEvent event) {
-    if (!mounted) return;
-    setState(() {
-      if (event.state == DriveDownloadState.downloading) {
-        _isDownloading = true;
-        _currentFileBytes = event.bytesDownloaded ?? 0;
-      } else if (event.state == DriveDownloadState.done) {
-        _completedBytes += event.fileSizeBytes ?? 0;
-        _currentFileBytes = 0;
-        _downloadedCount++;
-        if (_downloadedCount >= _totalCount) _isDownloading = false;
-      } else if (event.state == DriveDownloadState.error) {
-        _currentFileBytes = 0;
-        // Keep _isDownloading; retry will fire a new downloading event.
-        // After all retries fail no more events come and it stays false.
-        _isDownloading = false;
-      }
-    });
+  void _onChange() {
+    if (mounted) setState(() {});
   }
 
   @override
   void dispose() {
-    _sub?.cancel();
+    _notifier?.removeListener(_onChange);
     super.dispose();
   }
+
+  
+
 
   Future<void> _cancelAndRemove(BuildContext context) async {
     final theme = Theme.of(context);
@@ -276,19 +248,17 @@ class _ActionButtonsState extends State<_ActionButtons> {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final isDrive = widget.book.source == AudiobookSource.drive;
-    // Prefer event-driven counts (set by _initDownloadState / _onEvent) over
-    // widget.book.audioFiles, which is stale when the book was opened before
-    // a download completed. Fall back to audioFiles only before _initDownloadState
-    // has run (_totalCount == 0) so non-Drive books and first frames still work.
-    final downloaded = isDrive && _totalCount > 0
-        ? _downloadedCount
-        : widget.book.audioFiles.length;
-    final total = isDrive && _totalCount > 0
-        ? _totalCount
-        : (widget.book.driveMetadata?.totalFileCount ?? 0);
+    // Tracker snapshot is authoritative once seeded; before that fall back to
+    // whatever the widget was constructed with (see _seedFallback).
+    final snap = _progress;
+    final downloaded = snap?.downloadedCount ?? widget.book.audioFiles.length;
+    final total = snap?.totalCount ??
+        (widget.book.driveMetadata?.totalFileCount ?? 0);
     final fullyDownloaded = isDrive && total > 0 && downloaded >= total;
     final hasDownloaded = isDrive && (downloaded > 0 || _isDownloading);
     final notDownloaded = isDrive && !fullyDownloaded && !_isDownloading;
+    final overallProgress = snap?.overallProgress ?? 0;
+    final totalBytes = snap?.totalBytes ?? 0;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -339,13 +309,13 @@ class _ActionButtonsState extends State<_ActionButtons> {
               width: 16,
               height: 16,
               child: CircularProgressIndicator(
-                value: _progress > 0 ? _progress : null,
+                value: overallProgress > 0 ? overallProgress : null,
                 strokeWidth: 2,
                 color: theme.colorScheme.primary.withValues(alpha: 0.5),
               ),
             ),
-            label: Text(_progress > 0
-                ? 'Downloading — ${(_progress * 100).toStringAsFixed(0)}%'
+            label: Text(overallProgress > 0
+                ? 'Downloading — ${(overallProgress * 100).toStringAsFixed(0)}%'
                 : 'Downloading…'),
           ),
         ] else if (notDownloaded) ...[
@@ -354,8 +324,8 @@ class _ActionButtonsState extends State<_ActionButtons> {
             onPressed: () => showDriveDownloadSheet(context, widget.book),
             icon: const Icon(Icons.download_rounded),
             label: Text(
-              _totalBookBytes > 0
-                  ? 'Download to device (${formatBytes(_totalBookBytes)})'
+              totalBytes > 0
+                  ? 'Download to device (${formatBytes(totalBytes)})'
                   : 'Download to device',
             ),
           ),

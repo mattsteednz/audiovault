@@ -7,6 +7,7 @@ import '../models/audiobook.dart';
 import '../utils/safe_fs_name.dart';
 import 'drive_book_repository.dart';
 import 'drive_download_manager.dart';
+import 'download_progress_tracker.dart';
 import 'drive_service.dart';
 import 'preferences_service.dart';
 import 'scanner_service.dart';
@@ -17,6 +18,7 @@ class DriveLibraryService {
   final DriveDownloadManager _downloadManager;
   final PreferencesService _prefs;
   final ScannerService _scanner;
+  final DownloadProgressTracker _tracker;
 
   DriveLibraryService(
     this._repo,
@@ -24,6 +26,7 @@ class DriveLibraryService {
     this._downloadManager,
     this._prefs,
     this._scanner,
+    this._tracker,
   );
 
   /// Returns the staging directory for a Drive book — always in app storage.
@@ -302,6 +305,7 @@ class DriveLibraryService {
       }
     }
     await _repo.resetBookDownloads(folderId);
+    await _tracker.reseed(folderId);
   }
 
   /// Returns total size in bytes for all files in a Drive book.
@@ -322,5 +326,6 @@ class DriveLibraryService {
       }
       await _repo.updateFileState(folderId, f.fileIndex, DriveDownloadState.none);
     }
+    await _tracker.reseed(folderId);
   }
 }
