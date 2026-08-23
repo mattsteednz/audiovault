@@ -670,6 +670,31 @@ class MockPreferencesService extends _i1.Mock
         returnValue: _i7.Future<void>.value(),
         returnValueForMissingStub: _i7.Future<void>.value(),
       ) as _i7.Future<void>);
+
+  @override
+  _i7.Future<String> getViewMode() => (super.noSuchMethod(
+        Invocation.method(
+          #getViewMode,
+          [],
+        ),
+        returnValue: _i7.Future<String>.value(_i10.dummyValue<String>(
+          this,
+          Invocation.method(
+            #getViewMode,
+            [],
+          ),
+        )),
+      ) as _i7.Future<String>);
+
+  @override
+  _i7.Future<void> setViewMode(String? value) => (super.noSuchMethod(
+        Invocation.method(
+          #setViewMode,
+          [value],
+        ),
+        returnValue: _i7.Future<void>.value(),
+        returnValueForMissingStub: _i7.Future<void>.value(),
+      ) as _i7.Future<void>);
 }
 
 /// A class which mocks [AudioPlayer].

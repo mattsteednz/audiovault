@@ -18,6 +18,8 @@ All notable changes to Kōwhai Audiobook Player are documented here.
 - **Repo hygiene** — Removed the stale `assets/lib` app copy and duplicate `.analysis_options.yaml`; unified leftover "AudioVault"/`sbcover` naming to Kōwhai (`KowhaiApp`, `[Kowhai:*]` log tags); added MIT `LICENSE` file.
 - **Tests** — Retired the intentionally-failing exploration suite; its download-prompt gating coverage now lives in the preservation suite as Property 6. Mocks regenerated against current interfaces and the global analyzer suppression removed.
 - **Fonts** — Manrope and Playfair Display are now bundled with the app instead of fetched from Google's font CDN at runtime. First launch is fully offline-safe, renders correctly with no network, makes no unconsented Google network call, and no longer flashes fallback fonts. The `google_fonts` dependency was removed.
+- **Performance** — The mini player's frosted-glass blur surface no longer repaints on every position tick (only the thin progress bar and "x left" label do), and a running sleep timer no longer rebuilds the whole player screen every second — only its chip.
+- **Library** — Grid/list layout choice is remembered between launches, search input is debounced for smoother typing on large libraries, and the metadata-enrichment checkbox on first-run now matches the Settings default.
 
 ### Fixed
 - **Finished status lost on playback** — Books manually marked Finished stayed finished; periodic position saves no longer reset the status you set.

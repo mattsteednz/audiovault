@@ -18,7 +18,9 @@ class OnboardingScreen extends StatefulWidget {
 class _OnboardingScreenState extends State<OnboardingScreen> {
   bool _loadingLocal = false;
   bool _loadingDrive = false;
-  bool _metadataEnrichment = false;
+  // Matches the Settings/PreferencesService default (enrichment on) — the
+  // checkbox previously started at false, contradicting what Settings showed.
+  bool _metadataEnrichment = true;
   bool _driveAvailable = false;
   String? _error;
 

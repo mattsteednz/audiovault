@@ -1092,20 +1092,25 @@ class MockPreferencesService extends _i1.Mock
       ) as _i7.Future<void>);
 
   @override
-  _i7.Future<_i9.BookStatus?> getStatusFilter() => (super.noSuchMethod(
+  _i7.Future<String> getViewMode() => (super.noSuchMethod(
         Invocation.method(
-          #getStatusFilter,
+          #getViewMode,
           [],
         ),
-        returnValue: _i7.Future<_i9.BookStatus?>.value(),
-      ) as _i7.Future<_i9.BookStatus?>);
+        returnValue: _i7.Future<String>.value(_i8.dummyValue<String>(
+          this,
+          Invocation.method(
+            #getViewMode,
+            [],
+          ),
+        )),
+      ) as _i7.Future<String>);
 
   @override
-  _i7.Future<void> setStatusFilter(_i9.BookStatus? status) =>
-      (super.noSuchMethod(
+  _i7.Future<void> setViewMode(String? value) => (super.noSuchMethod(
         Invocation.method(
-          #setStatusFilter,
-          [status],
+          #setViewMode,
+          [value],
         ),
         returnValue: _i7.Future<void>.value(),
         returnValueForMissingStub: _i7.Future<void>.value(),

@@ -251,6 +251,8 @@ void main() {
         .thenAnswer((_) async => false);
     when(mockPreferencesService.getAvailabilityFilter())
         .thenAnswer((_) async => AvailabilityFilterState.all);
+    when(mockPreferencesService.getViewMode())
+        .thenAnswer((_) async => 'grid');
     when(mockPreferencesService.getSkipInterval())
         .thenAnswer((_) async => 30);
     when(mockPreferencesService.getAutoRewind())
