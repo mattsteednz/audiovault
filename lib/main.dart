@@ -36,10 +36,10 @@ void main() async {
   setupLocator();
 
   // Restore Drive session silently (no-op if never signed in).
+  // NOTE: kept BEFORE runApp deliberately — LibraryScreen's first scan reads
+  // DriveService.currentAccount to decide filter/reset behaviour, so the
+  // session must be resolved before the first frame to avoid a startup race.
   await locator<DriveService>().restoreSession();
-
-  // Recover any downloads interrupted by app kill.
-  await locator<DriveBookRepository>().resetStaleDownloads();
 
   // Initialise audio service.
   final audioHandler = await AudioService.init<KowhaiHandler>(
@@ -92,23 +92,38 @@ void main() async {
   final storedTheme = await locator<PreferencesService>().getThemeMode();
   themeModeNotifier.value = _themeModeFromString(storedTheme);
 
-  // Auto-restore from Drive if local DB is empty and sync is enabled.
+  // Auto-restore from Drive if local DB is empty and sync is enabled, plus
+  // recovery of downloads interrupted by app kill — both deferred past the
+  // first frame so they don't delay time-to-interactive.
   final prefs = locator<PreferencesService>();
-  final syncEnabled = await prefs.getDriveProgressSync();
-  if (syncEnabled) {
-    final positions = await locator<PositionService>().getAllPositions();
-    if (positions.isEmpty) {
-      final root = await prefs.getLibraryPath();
-      if (root != null) {
-        unawaited(locator<PositionBackupService>().restoreFromDrive(root));
-      }
-    }
-  }
+  WidgetsBinding.instance.addPostFrameCallback((_) {
+    unawaited(_deferredStartupRecovery(prefs));
+  });
 
   runApp(KowhaiApp(
     audioHandler: audioHandler,
     themeModeNotifier: themeModeNotifier,
   ));
+}
+
+/// Background recovery work that must not block startup:
+/// * reset stale 'downloading' states left by a process kill
+/// * restore positions from Drive on a fresh install when sync is enabled
+Future<void> _deferredStartupRecovery(PreferencesService prefs) async {
+  try {
+    await locator<DriveBookRepository>().resetStaleDownloads();
+  } catch (e) {
+    debugPrint('[Kowhai:Startup] resetStaleDownloads failed: $e');
+  }
+
+  final syncEnabled = await prefs.getDriveProgressSync();
+  if (!syncEnabled) return;
+  final positions = await locator<PositionService>().getAllPositions();
+  if (positions.isNotEmpty) return;
+  final root = await prefs.getLibraryPath();
+  if (root != null) {
+    await locator<PositionBackupService>().restoreFromDrive(root);
+  }
 }
 
 class KowhaiApp extends StatefulWidget {

@@ -193,6 +193,10 @@ void main() {
     when(mockDriveDownloadManager.downloadEvents)
         .thenAnswer((_) => const Stream.empty());
 
+    // ── PreferencesService ────────────────────────────────────────────────
+    // LibraryScreen loads the persisted status filter during _initLibrary.
+    when(mockPreferencesService.getStatusFilter()).thenAnswer((_) async => null);
+
     // ── DriveBookRepository ───────────────────────────────────────────────
     when(mockDriveBookRepository.getFilesForBook(any))
         .thenAnswer((_) async => []);

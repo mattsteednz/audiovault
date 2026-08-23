@@ -600,4 +600,24 @@ class MockPreferencesService extends _i1.Mock
         returnValue: _i6.Future<void>.value(),
         returnValueForMissingStub: _i6.Future<void>.value(),
       ) as _i6.Future<void>);
+
+  @override
+  _i6.Future<_i7.BookStatus?> getStatusFilter() => (super.noSuchMethod(
+        Invocation.method(
+          #getStatusFilter,
+          [],
+        ),
+        returnValue: _i6.Future<_i7.BookStatus?>.value(),
+      ) as _i6.Future<_i7.BookStatus?>);
+
+  @override
+  _i6.Future<void> setStatusFilter(_i7.BookStatus? status) =>
+      (super.noSuchMethod(
+        Invocation.method(
+          #setStatusFilter,
+          [status],
+        ),
+        returnValue: _i6.Future<void>.value(),
+        returnValueForMissingStub: _i6.Future<void>.value(),
+      ) as _i6.Future<void>);
 }

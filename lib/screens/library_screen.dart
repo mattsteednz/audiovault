@@ -352,6 +352,7 @@ class _LibraryScreenState extends State<LibraryScreen> {
     final prefs = locator<PreferencesService>();
     final sortName = await prefs.getLibrarySort();
     final availFilter = await prefs.getAvailabilityFilter();
+    final statusFilter = await prefs.getStatusFilter();
     final driveConnected = locator<DriveService>().currentAccount != null;
     if (mounted) {
       setState(() {
@@ -359,6 +360,7 @@ class _LibraryScreenState extends State<LibraryScreen> {
         // Reset to `all` if Drive is not connected — the filter is meaningless
         // without a Drive account and the section won't be shown in the UI.
         _availabilityFilter = driveConnected ? availFilter : AvailabilityFilterState.all;
+        _statusFilter = statusFilter;
       });
     }
     final shouldScan = widget.initialSyncDrive || await prefs.getRefreshOnStartup();
@@ -400,6 +402,11 @@ class _LibraryScreenState extends State<LibraryScreen> {
     });
     try {
       final path = await locator<PreferencesService>().getLibraryPath();
+
+      // No local folder — the wait is entirely on Drive, so say so.
+      if (path == null && mounted) {
+        setState(() => _scanStatus = 'Checking Google Drive…');
+      }
 
       // Exclude Drive-managed dirs from local scan to avoid double-counting
       // books downloaded to the local library folder.
@@ -444,6 +451,10 @@ class _LibraryScreenState extends State<LibraryScreen> {
       }
 
       final enrichEnabled = await locator<PreferencesService>().getMetadataEnrichment();
+
+      if (mounted && enrichEnabled) {
+        setState(() => _scanStatus = 'Loading covers…');
+      }
 
       // Apply cached enriched covers only when enrichment is enabled.
       // When disabled, treat each scan as a cache flush and show only
@@ -514,6 +525,13 @@ class _LibraryScreenState extends State<LibraryScreen> {
           // Drive-only books or stat errors fall through to 0.
         }
       }
+    }
+
+    // Prefetch formatted download sizes for Drive books that aren't fully
+    // downloaded, so list tiles can show them without firing requests during
+    // build. The cache map makes this idempotent across re-sorts.
+    for (final b in all) {
+      await _ensureDownloadSizeLabel(b);
     }
 
     if (!mounted) return;
@@ -1085,6 +1103,8 @@ class _LibraryScreenState extends State<LibraryScreen> {
                                 selected: _statusFilter == null,
                                 onTap: () {
                                   setState(() => _statusFilter = null);
+                                  locator<PreferencesService>()
+                                      .setStatusFilter(null);
                                   setSheetState(() {});
                                 },
                               ),
@@ -1094,6 +1114,8 @@ class _LibraryScreenState extends State<LibraryScreen> {
                                   selected: _statusFilter == s,
                                   onTap: () {
                                     setState(() => _statusFilter = s);
+                                    locator<PreferencesService>()
+                                        .setStatusFilter(s);
                                     setSheetState(() {});
                                   },
                                 ),
@@ -1165,8 +1187,9 @@ class _LibraryScreenState extends State<LibraryScreen> {
                                       _statusFilter = null;
                                       _availabilityFilter = AvailabilityFilterState.all;
                                     });
-                                    locator<PreferencesService>()
-                                        .setAvailabilityFilter(AvailabilityFilterState.all);
+                                    final prefs = locator<PreferencesService>();
+                                    prefs.setStatusFilter(null);
+                                    prefs.setAvailabilityFilter(AvailabilityFilterState.all);
                                     setSheetState(() {});
                                   }
                                 : null,
@@ -1355,7 +1378,9 @@ class _LibraryScreenState extends State<LibraryScreen> {
       _statusFilter = null;
       _availabilityFilter = AvailabilityFilterState.all;
     });
-    locator<PreferencesService>().setAvailabilityFilter(AvailabilityFilterState.all);
+    final prefs = locator<PreferencesService>();
+    prefs.setStatusFilter(null);
+    prefs.setAvailabilityFilter(AvailabilityFilterState.all);
   }
 
   String _statusFilterLabel(BookStatus s) => switch (s) {
@@ -1416,11 +1441,6 @@ class _LibraryScreenState extends State<LibraryScreen> {
   }
 
   Widget _list(List<Audiobook> books) {
-    // Kick off size fetches for any Drive books not yet cached.
-    for (final b in books) {
-      _ensureDownloadSizeLabel(b);
-    }
-
     return RefreshIndicator(
       onRefresh: _scan,
       child: ListView.separated(

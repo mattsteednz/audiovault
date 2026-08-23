@@ -1,5 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:kowhai/models/audiobook.dart';
 import 'package:kowhai/models/availability_filter_state.dart';
 import 'package:kowhai/services/preferences_service.dart';
 
@@ -110,6 +111,32 @@ void main() {
     test('round-trip for driveOnly', () async {
       await prefs.setAvailabilityFilter(AvailabilityFilterState.driveOnly);
       expect(await prefs.getAvailabilityFilter(), AvailabilityFilterState.driveOnly);
+    });
+  });
+
+  group('PreferencesService — status filter', () {
+    test('getStatusFilter returns null when unset', () async {
+      expect(await prefs.getStatusFilter(), isNull);
+    });
+
+    test('round-trips each BookStatus', () async {
+      for (final status in BookStatus.values) {
+        await prefs.setStatusFilter(status);
+        expect(await prefs.getStatusFilter(), status);
+      }
+    });
+
+    test('setStatusFilter(null) clears a previously-set value', () async {
+      await prefs.setStatusFilter(BookStatus.finished);
+      expect(await prefs.getStatusFilter(), BookStatus.finished);
+      await prefs.setStatusFilter(null);
+      expect(await prefs.getStatusFilter(), isNull);
+    });
+
+    test('unrecognised stored value falls back to null', () async {
+      SharedPreferences.setMockInitialValues({'status_filter': 'bogus'});
+      prefs = PreferencesService();
+      expect(await prefs.getStatusFilter(), isNull);
     });
   });
 }

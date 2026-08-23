@@ -179,7 +179,7 @@ class _DriveDownloadOverlayState extends State<DriveDownloadOverlay> {
             ),
           ),
 
-        // Download badge — top-right amber rounded rect with white arrow.
+        // Download badge — top-right primary rounded rect with white arrow.
         // Shown when not downloaded or partially downloaded.
         // In compact contexts (e.g. list tile thumbnails) the badge scales
         // down to fit the top-right quadrant of the cover.
@@ -192,7 +192,7 @@ class _DriveDownloadOverlayState extends State<DriveDownloadOverlay> {
               child: Container(
                 padding: EdgeInsets.all(widget.iconSize <= 24 ? 3 : 6),
                 decoration: BoxDecoration(
-                  color: const Color(0xfff4bd6f),
+                  color: Theme.of(context).colorScheme.primary,
                   borderRadius: BorderRadius.circular(widget.iconSize <= 24 ? 5 : 8),
                 ),
                 child: Icon(
