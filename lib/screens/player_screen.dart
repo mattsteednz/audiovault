@@ -8,6 +8,7 @@ import '../services/audio_handler.dart';
 import '../services/position_service.dart';
 import '../services/preferences_service.dart';
 import '../services/sleep_timer_controller.dart';
+import '../utils/bookmark_undo.dart';
 import '../utils/formatters.dart';
 import '../widgets/audio_handler_scope.dart';
 import '../widgets/book_cover.dart';
@@ -971,8 +972,9 @@ class _BookmarksSheetState extends State<_BookmarksSheet> {
     if (mounted) setState(() => _bookmarks = bookmarks);
   }
 
-  Future<void> _delete(int id) async {
-    await locator<PositionService>().deleteBookmark(id);
+  Future<void> _delete(Bookmark bookmark) async {
+    if (!mounted) return;
+    await deleteBookmarkWithUndo(context, bookmark);
     await _load();
   }
 
@@ -1083,7 +1085,7 @@ class _BookmarksSheetState extends State<_BookmarksSheet> {
                                   color: theme.colorScheme.onErrorContainer,
                                 ),
                               ),
-                              onDismissed: (_) => _delete(bm.id!),
+                              onDismissed: (_) => _delete(bm),
                               child: ListTile(
                                 leading: Icon(
                                   Icons.bookmark_rounded,

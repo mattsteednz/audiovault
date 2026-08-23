@@ -1,5 +1,6 @@
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../models/audiobook.dart';
 import '../models/availability_filter_state.dart';
 
 /// Read-only snapshot of all settings, loaded in a single batch.
@@ -50,6 +51,7 @@ class PreferencesService {
   static const _driveBackupFolderIdKey = 'drive_backup_folder_id';
   static const _driveBackupFolderNameKey = 'drive_backup_folder_name';
   static const _availabilityFilterKey = 'availability_filter';
+  static const _statusFilterKey = 'status_filter';
 
   SharedPreferences? _prefs;
 
@@ -239,5 +241,25 @@ class PreferencesService {
 
   Future<void> setAvailabilityFilter(AvailabilityFilterState value) async {
     await (await _sp).setString(_availabilityFilterKey, value.name);
+  }
+
+  /// Persisted library status filter (progress pills). Returns null when the
+  /// user is showing all statuses.
+  Future<BookStatus?> getStatusFilter() async {
+    final name = (await _sp).getString(_statusFilterKey);
+    if (name == null) return null;
+    for (final s in BookStatus.values) {
+      if (s.name == name) return s;
+    }
+    return null;
+  }
+
+  Future<void> setStatusFilter(BookStatus? status) async {
+    final prefs = await _sp;
+    if (status == null) {
+      await prefs.remove(_statusFilterKey);
+    } else {
+      await prefs.setString(_statusFilterKey, status.name);
+    }
   }
 }

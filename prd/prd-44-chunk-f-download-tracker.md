@@ -46,7 +46,34 @@ C) Keep duplication, extract pure reducer only.
   before position updates, use first positionStream event after seek.
 
 ## Tasks
-- [ ] F0. Architect consult; VERDICT recorded:
+- [x] F0. Architect consult; VERDICT recorded (Principal System Architect,
+      2026-08-23):
+      Option (a) CONFIRMED with amendments — manager-owned
+      `DownloadProgressTracker extends ChangeNotifier` in
+      lib/services/download_progress_tracker.dart: immutable
+      `BookDownloadProgress` snapshots keyed by folderId; per-folder child
+      Listenable (`listenableFor`) for granular card rebuilds; lazy idempotent
+      `ensureSeeded(folderId)` (DB seed on first ask — survives cold-start
+      ordering); explicit `reseed(folderId)` called by DriveLibraryService
+      after undownload/deleteLocalFiles/promoteToLocal (replacing the
+      overlay's didUpdateWidget length-heuristic recovery);
+      `onBookCompleted`/`onCoverCompleted` callbacks fired once on
+      idle→complete transitions; single `attach(events)` subscription.
+      Throttle AT SOURCE (manager `_downloadFile` before `_controller.add`):
+      injectable-clock `ProgressThrottle` (100 ms OR ≥1% delta; terminal
+      events bypass; unknown total → byte-delta-only) instantiated per
+      attempt closure. R14 = guard-at-boundary NOW (driveMetadata?. with
+      hide-UI semantics), sealed class split deferred to its own future PRD
+      (would collide with G's move-only guarantee). R15 = bounded post-seek
+      handshake: `await seek; onEffectiveDuration; await
+      positionStream.first.timeout(250ms, onTimeout: () => position)` —
+      extract `@visibleForTesting resumeLocalPlayback({seekTarget})` for
+      tests. Orchestration: add `DriveLibraryService.refreshBook(folderId)`
+      (decision moves to service); list mutation stays in UI until G; NO
+      completedBooks stream (tracker callback suffices). Belt-and-braces:
+      `reseedAll()` after resetStaleDownloads in deferred startup.
+      9-commit migration sequence + acceptance grep (completedBytes outside
+      tracker == 0) recorded in consult transcript.
 - [ ] F1. Implement tracker per verdict; migrate 3 surfaces; delete duplicated
       state machines. Existing tests updated; add tracker unit tests (seed,
       downloading/done/error transitions, cancel semantics unchanged).

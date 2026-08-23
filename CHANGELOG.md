@@ -4,7 +4,16 @@ All notable changes to Kōwhai Audiobook Player are documented here.
 
 ## [Unreleased]
 
+### Added
+- **Persisted status filter** — the progress filter pills (Not started / In progress / Finished) are now remembered across sessions, matching the availability filter.
+- **Bookmark undo** — deleting a bookmark offers a short Undo snackbar instead of dropping it immediately.
+
 ### Changed
+- **Live scan status** — the library scan overlay steps through "Scanning your library…", "Checking Google Drive…" and "Loading covers…" instead of a single static label.
+- **Snappier startup** — stale-download recovery and Drive position auto-restore now run after the first frame; download-size labels prefetch during scan instead of during list scrolling.
+- The Drive download badge now follows the theme's primary colour.
+
+### Changed (earlier in this cycle)
 - **CI** — Flutter version pinned (3.44.4) with pub caching in both workflows, ending local/CI SDK drift; release APK builds now use the workflow run number as the Android build number so sideload updates always upgrade cleanly.
 - **Repo hygiene** — Removed the stale `assets/lib` app copy and duplicate `.analysis_options.yaml`; unified leftover "AudioVault"/`sbcover` naming to Kōwhai (`KowhaiApp`, `[Kowhai:*]` log tags); added MIT `LICENSE` file.
 - **Tests** — Retired the intentionally-failing exploration suite; its download-prompt gating coverage now lives in the preservation suite as Property 6. Mocks regenerated against current interfaces and the global analyzer suppression removed.
