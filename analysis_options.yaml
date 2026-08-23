@@ -27,11 +27,6 @@ linter:
 analyzer:
   exclude:
     - assets/**
-  errors:
-    # Generated mock files (build_runner/mockito) produce @override annotations
-    # for methods that exist in the local service interface but not in the
-    # committed version. Suppress rather than regenerate on every service change.
-    override_on_non_overriding_member: ignore
 
 # Additional information about this file can be found at
 # https://dart.dev/guides/language/analysis-options
