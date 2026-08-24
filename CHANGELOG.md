@@ -28,6 +28,23 @@ All notable changes to Kōwhai Audiobook Player are documented here.
 
 ## [Unreleased]
 
+---
+
+## [3.0.0] - 2026-08-24
+
+### Changed (BREAKING - dependency modernization)
+- **google_sign_in 6 -> 7** with the full auth/authorization split:
+  silent restore uses `attemptLightweightAuthentication`, interactive sign-in
+  uses `authenticate(scopeHint:)` so supported platforms combine the consent
+  flows; write scope still requested only when sync is enabled via
+  `authorizeScopes`; `hasWriteScope` now checks a silent authorization token
+  (cross-platform replacement for web-only `canAccessScopes`).
+
+> DEVICE VERIFICATION PENDING: OAuth grant/scope prompts must be exercised on
+> a real device before relying on this build. If Drive sign-in misbehaves,
+> file an issue - rollback is v2.1.0.
+
+
 ### Added
 - **Persisted status filter** — the progress filter pills (Not started / In progress / Finished) are now remembered across sessions, matching the availability filter.
 - **Bookmark undo** — deleting a bookmark offers a short Undo snackbar instead of dropping it immediately.

@@ -77,16 +77,33 @@ class DriveService {
   static const _readScope = drive.DriveApi.driveReadonlyScope;
   static const _writeScope = drive.DriveApi.driveFileScope;
 
-  final GoogleSignIn _signIn = GoogleSignIn(scopes: [_readScope]);
+  // google_sign_in 7.x: singleton, requires initialize() exactly once, and
+  // separates AUTHENTICATION (who you are) from AUTHORIZATION (scopes).
+  GoogleSignIn get _signIn => GoogleSignIn.instance;
+  bool _initialized = false;
+
+  Future<void> _ensureInit() async {
+    if (_initialized) return;
+    await _signIn.initialize();
+    _initialized = true;
+  }
 
   GoogleSignInAccount? _account;
   GoogleSignInAccount? get currentAccount => _account;
-  Stream<GoogleSignInAccount?> get accountStream => _signIn.onCurrentUserChanged;
 
   /// Silently restores a previously signed-in account. Call once on app startup.
+  ///
+  /// v7 note: [attemptLightweightAuthentication] is no longer guaranteed
+  /// silent nor to return a Future (web). On mobile it returns
+  /// `Future<GoogleSignInAccount?>`; on platforms without a definitive answer
+  /// we simply start unauthenticated and rely on the interactive path.
   Future<void> restoreSession() async {
     try {
-      _account = await _signIn.signInSilently();
+      await _ensureInit();
+      final result = _signIn.attemptLightweightAuthentication();
+      if (result is Future<GoogleSignInAccount?>) {
+        _account = await result;
+      }
       if (_account != null) debugPrint('[Drive] Session restored');
     } catch (_) {
       // No previous session or token expired — user will sign in manually.
@@ -101,34 +118,51 @@ class DriveService {
   }
 
   /// Signs in interactively. Returns the account, or null if cancelled/failed.
+  ///
+  /// [authenticate]'s scopeHint lets supporting platforms combine the
+  /// authentication + read-scope authorization into one flow; platforms that
+  /// cannot combine fall back to the separate authorization request made by
+  /// [getAccessToken].
   Future<GoogleSignInAccount?> signIn() async {
     try {
-      _account = await _signIn.signIn();
+      await _ensureInit();
+      _account = await _signIn.authenticate(scopeHint: [_readScope]);
       if (_account == null) {
-        debugPrint('[Drive] signIn() returned null (user cancelled or no account selected)');
+        debugPrint(
+            '[Drive] authenticate() returned null (user cancelled or no account selected)');
       } else {
-        debugPrint('[Drive] signIn() succeeded');
+        debugPrint('[Drive] authenticate() succeeded');
       }
       return _account;
     } catch (e, st) {
-      debugPrint('[Drive] signIn() threw: $e\n$st');
+      debugPrint('[Drive] authenticate() threw: $e\n$st');
       rethrow;
     }
   }
 
   /// Signs out and clears the stored account.
   Future<void> signOut() async {
+    await _ensureInit();
     await _signIn.signOut();
     _account = null;
   }
 
-  /// Returns a fresh access token for the current account, or null if not signed in.
+  /// Returns a fresh access token for the current account, or null if not
+  /// signed in / not authorized for the read scope.
   Future<String?> getAccessToken() async {
-    final account = _account ?? await _signIn.signInSilently();
-    if (account == null) return null;
-    _account = account;
-    final auth = await account.authentication;
-    return auth.accessToken;
+    await _ensureInit();
+    var account = _account;
+    if (account == null) {
+      final result = _signIn.attemptLightweightAuthentication();
+      if (result is Future<GoogleSignInAccount?>) {
+        account = await result;
+      }
+      if (account == null) return null;
+      _account = account;
+    }
+    final authorization = await account.authorizationClient
+        .authorizationForScopes([_readScope]);
+    return authorization?.accessToken;
   }
 
   Future<drive.DriveApi?> _driveApi() async {
@@ -255,20 +289,29 @@ class DriveService {
   /// Requests the write scope interactively. Returns true if granted.
   /// Call this only when the user explicitly enables Drive sync.
   Future<bool> requestWriteScope() async {
-    if (_account == null) return false;
+    final account = _account;
+    if (account == null) return false;
     try {
-      return await _signIn.requestScopes([_writeScope]);
+      // authorizeScopes is non-nullable: it resolves with the authorization
+      // or throws (cancelled / denied).
+      await account.authorizationClient.authorizeScopes([_writeScope]);
+      return true;
     } catch (e) {
       debugPrint('[Drive] requestWriteScope failed: $e');
       return false;
     }
   }
 
-  /// Returns true if the write scope has already been granted, without prompting.
+  /// Returns true if the write scope has already been granted, without
+  /// prompting. v7 note: canAccessScopes is web-only; authorizationForScopes
+  /// returning a token is the cross-platform equivalent of "already granted".
   Future<bool> hasWriteScope() async {
-    if (_account == null) return false;
+    final account = _account;
+    if (account == null) return false;
     try {
-      return await _signIn.canAccessScopes([_writeScope]);
+      final authorization = await account.authorizationClient
+          .authorizationForScopes([_writeScope]);
+      return authorization != null;
     } catch (_) {
       return false;
     }
