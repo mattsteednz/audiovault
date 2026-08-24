@@ -30,6 +30,19 @@ All notable changes to Kōwhai Audiobook Player are documented here.
 
 ---
 
+## [4.0.0] - 2026-08-24
+
+### Added
+- **Author-aware cover enrichment** - Missing covers are now searched with author + title for better matches, falling back to title-only (telemetry counts fallbacks).
+- **Responsive library grid** - Columns scale to screen width via max-extent sizing; tablets and foldables no longer stuck at two columns.
+- **Drive folder nesting** - Drive libraries now support the same layouts as local folders: flat, author/book, and author/series/book (depth 3).
+
+### Fixed
+- Enrichment service no longer replaces dependency-injected HTTP clients mid-run.
+
+
+---
+
 ## [3.0.0] - 2026-08-24
 
 ### Changed (BREAKING - dependency modernization)
