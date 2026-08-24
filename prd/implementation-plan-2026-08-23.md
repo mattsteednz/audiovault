@@ -62,3 +62,11 @@ master's status line updated, and always finish a work session with
 All chunk boxes ticked here + in their prd files; CHANGELOG entries for every
 user-visible item; README tech-stack/feature text still accurate;
 origin/main green; stale branches cleaned.
+
+## TOOLING WARNING (for any future agent on this machine)
+PowerShell 5.1 `Set-Content`/`Add-Content` write ANSI by default: every non-ASCII
+char (em-dashes, Kowhai) becomes INVALID UTF-8, and the Dart analyzer then
+reports phantom `uri_does_not_exist` errors for the corrupted file (it treats
+it as binary). Repair recipe: re-encode via
+`[IO.File]::WriteAllText($f, [Text.Encoding]::GetEncoding(1252).GetString([IO.File]::ReadAllBytes($f)), UTF8(false))`.
+Prefer the file Edit/Write tools exclusively for source changes.
