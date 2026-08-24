@@ -106,7 +106,7 @@ class DriveService {
       }
       if (_account != null) debugPrint('[Drive] Session restored');
     } catch (_) {
-      // No previous session or token expired — user will sign in manually.
+      // No previous session or token expired â€” user will sign in manually.
     }
   }
 
@@ -267,50 +267,136 @@ class DriveService {
   /// author/series grouping and descended into, up to [maxScanDepth] levels
   /// below the root (matching ScannerService.maxScanDepth semantics).
   ///
-  /// NOTE (architect risk flag): this walks the Drive tree sequentially with
-  /// one list call per folder — fine for personal libraries, but very deep
-  /// wide trees cost N+1 API round-trips. Depth cap bounds the worst case.
-  Future<List<DriveFolderScan>> scanRootFolder(String rootFolderId, bool isShared) async {
-    return _scanFolderLevel(rootFolderId, isShared, maxScanDepth);
-  }
-
-  /// Maximum folder depth below the Drive root that scanning descends into.
-  /// Mirrors [ScannerService.maxScanDepth] so local and Drive libraries
-  /// support the same layouts: flat / author/book / author/series/book.
+  /// Efficiency (revised approach):
+  /// * ONE Drive call per folder — children are fetched without a mimeType
+  ///   filter and classified locally (files vs subfolders), halving the
+  ///   round-trips versus separate file/folder queries.
+  /// * Breadth-first with bounded parallelism ([_scanConcurrency] workers)
+  ///   so wall-clock scales with tree DEPTH rather than total folder count,
+  ///   while staying well inside per-user Drive quota.
   static const int maxScanDepth = 3;
+  static const int _scanConcurrency = 6;
 
-  Future<List<DriveFolderScan>> _scanFolderLevel(
-      String parentId, bool parentIsShared, int remainingDepth) async {
-    final subfolders = await listSubfolders(parentId, isShared: parentIsShared);
+  Future<List<DriveFolderScan>> scanRootFolder(String rootFolderId, bool isShared) async {
+    // Seed the frontier with a synthetic root entry.
+    var frontier = <(DriveFolder, int)>[
+      (
+        DriveFolder(id: rootFolderId, name: '/', isShared: isShared),
+        maxScanDepth
+      )
+    ];
     final scans = <DriveFolderScan>[];
 
-    for (final folder in subfolders) {
-      final contents = await listFolderContents(folder.id);
-      final audio = contents.where((f) => f.isAudio).toList();
+    while (frontier.isNotEmpty) {
+      final listings = await _mapBounded(
+        frontier,
+        _scanConcurrency,
+        (entry) async {
+          final (folder, depth) = entry;
+          final children =
+              await _listChildren(folder.id, folder.isShared);
+          return (folder, depth, children);
+        },
+      );
 
-      if (audio.isNotEmpty) {
-        final images = contents.where((f) => f.isImage).toList();
-        final cover = _pickCover(images);
-        scans.add(DriveFolderScan(
-            folder: folder, audioFiles: audio, coverFile: cover));
-        continue;
+      final nextFrontier = <(DriveFolder, int)>[];
+      for (final (folder, depth, listing) in listings) {
+        if (listing.audio.isNotEmpty) {
+          scans.add(DriveFolderScan(
+            folder: folder,
+            audioFiles: listing.audio,
+            coverFile: _pickCover(listing.images),
+          ));
+          continue;
+        }
+        if (depth > 0) {
+          for (final sub in listing.subfolders) {
+            nextFrontier.add((sub, depth - 1));
+          }
+        }
       }
-
-      // No audio here — treat as grouping folder and descend.
-      if (remainingDepth > 0) {
-        scans.addAll(await _scanFolderLevel(
-            folder.id, folder.isShared, remainingDepth - 1));
-      }
+      frontier = nextFrontier;
     }
 
     return scans;
   }
 
+  /// One Drive query per page for ALL children of [folderId], classified
+  /// client-side into audio/images/subfolders.
+  Future<({List<DriveFileInfo> audio, List<DriveFileInfo> images, List<DriveFolder> subfolders})>
+      _listChildren(String folderId, bool isShared) async {
+    final api = await _driveApi();
+    final audio = <DriveFileInfo>[];
+    final images = <DriveFileInfo>[];
+    final subfolders = <DriveFolder>[];
+    if (api == null) {
+      return (audio: audio, images: images, subfolders: subfolders);
+    }
+
+    String? pageToken;
+    do {
+      final resp = await api.files.list(
+        q: "'${escapeQ(folderId)}' in parents and trashed = false",
+        spaces: 'drive',
+        $fields: 'nextPageToken, files(id, name, mimeType, size)',
+        pageToken: pageToken,
+      );
+      for (final f in resp.files ?? []) {
+        if (f.id == null || f.name == null) continue;
+        if (f.mimeType == 'application/vnd.google-apps.folder') {
+          subfolders.add(DriveFolder(id: f.id!, name: f.name!, isShared: isShared));
+          continue;
+        }
+        final info = DriveFileInfo(
+          id: f.id!,
+          name: f.name!,
+          mimeType: f.mimeType ?? '',
+          sizeBytes: int.tryParse(f.size ?? '0') ?? 0,
+        );
+        if (info.isAudio) {
+          audio.add(info);
+        } else if (info.isImage) {
+          images.add(info);
+        }
+      }
+      pageToken = resp.nextPageToken;
+    } while (pageToken != null);
+
+    audio.sort((a, b) => naturalCompare(a.name, b.name));
+    subfolders.sort((a, b) => naturalCompare(a.name, b.name));
+    return (audio: audio, images: images, subfolders: subfolders);
+  }
+
+  /// Runs [task] over [items] with at most [concurrency] in flight,
+  /// preserving input order in the returned list.
+  static Future<List<T>> _mapBounded<S, T>(
+    Iterable<S> items,
+    int concurrency,
+    Future<T> Function(S) task,
+  ) async {
+    final list = items.toList();
+    final results = List<T?>.filled(list.length, null);
+    var next = 0;
+
+    Future<void> worker() async {
+      while (true) {
+        final idx = next++;
+        if (idx >= list.length) return;
+        results[idx] = await task(list[idx]);
+      }
+    }
+
+    final workers = <Future<void>>[
+      for (var w = 0; w < concurrency && w < list.length; w++) worker()
+    ];
+    await Future.wait(workers);
+    return results.cast<T>();
+  }
   DriveFileInfo? _pickCover(List<DriveFileInfo> images) {
     return pickBestCover(images, (img) => img.name);
   }
 
-  // ── Write operations (requires driveFileScope) ─────────────────────────────────────
+  // â”€â”€ Write operations (requires driveFileScope) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
   /// Requests the write scope interactively. Returns true if granted.
   /// Call this only when the user explicitly enables Drive sync.
