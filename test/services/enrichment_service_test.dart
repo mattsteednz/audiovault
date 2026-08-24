@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert' show utf8;
 import 'dart:typed_data';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
@@ -26,6 +27,29 @@ class _HangingClient extends http.BaseClient {
   }
 
   http.BaseRequest? request;
+}
+
+/// Serves queued bodies in order while capturing every requested URL
+/// (R13 author-aware search tests).
+class _SequenceClient extends http.BaseClient {
+  final List<String> bodies;
+  final List<Uri> requested = [];
+  int _i = 0;
+
+  _SequenceClient(this.bodies);
+
+  @override
+  Future<http.StreamedResponse> send(http.BaseRequest request) async {
+    requested.add(request.url);
+    final i = _i < bodies.length ? _i : bodies.length - 1;
+    final body = bodies[i];
+    _i++;
+    return http.StreamedResponse(
+      Stream.value(utf8.encode(body)),
+      200,
+      headers: {'content-type': 'application/json'},
+    );
+  }
 }
 
 void main() {
@@ -206,6 +230,72 @@ void main() {
       await svc.enqueueBooks([makeBook('/book/d')]);
       completed = true;
       expect(completed, isTrue);
+    });
+  });
+
+  group('EnrichmentService author-aware search (R13)', () {
+    setUpAll(() {
+      sqfliteFfiInit();
+      databaseFactory = databaseFactoryFfi;
+    });
+
+    Future<(EnrichmentService, _SequenceClient)> makeSvc(
+        List<String> bodies) async {
+      final db = await databaseFactoryFfi.openDatabase(
+        inMemoryDatabasePath,
+        options: OpenDatabaseOptions(version: 1, singleInstance: false,
+            onCreate: (db, _) => db.execute('''
+            CREATE TABLE enrichment (
+              book_path TEXT PRIMARY KEY,
+              enriched INTEGER NOT NULL DEFAULT 0,
+              cover_path TEXT,
+              last_enriched_date INTEGER,
+              last_attempted_date INTEGER
+            )
+          ''')),
+      );
+      final client = _SequenceClient(bodies);
+      return (EnrichmentService.withDatabase(db, client: client), client);
+    }
+
+    Audiobook makeBook({String? author}) => Audiobook(
+          title: 'Dune',
+          author: author,
+          path: '/books/dune',
+          audioFiles: const [],
+        );
+
+    test('uses an author-constrained query when author is known', () async {
+      final (svc, client) = await makeSvc(['{"docs":[]}']);
+      await svc.enqueueBooks([makeBook(author: 'Frank Herbert')]);
+
+      expect(client.requested, isNotEmpty);
+      expect(client.requested.first.queryParameters['title'], 'Dune');
+      expect(client.requested.first.queryParameters['author'],
+          'Frank Herbert');
+    });
+
+    test('omits the author parameter when author is null', () async {
+      final (svc, client) = await makeSvc(['{"docs":[]}']);
+      await svc.enqueueBooks([makeBook()]);
+
+      expect(client.requested.first.queryParameters['title'], 'Dune');
+      expect(client.requested.first.queryParameters.containsKey('author'),
+          isFalse);
+    });
+
+    test('falls back to title-only when combined query misses', () async {
+      final (svc, client) = await makeSvc([
+        '{"docs":[]}', // title+author miss
+        '{"docs":[{"cover_i":null}]}', // title-only hit, no cover id
+      ]);
+      await svc.enqueueBooks([makeBook(author: 'Frank Herbert')]);
+
+      expect(client.requested.length, 2);
+      expect(client.requested.first.queryParameters.containsKey('author'),
+          isTrue);
+      expect(client.requested.last.queryParameters.containsKey('author'),
+          isFalse);
     });
   });
 

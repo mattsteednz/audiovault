@@ -261,20 +261,46 @@ class DriveService {
     return [...audio, ...images];
   }
 
-  /// Scans the immediate subfolders of [rootFolderId], treating each as one book.
+  /// Scans [rootFolderId] for audiobook folders, mirroring the local
+  /// scanner's nesting support (R22): a folder containing audio files is a
+  /// book; a folder without audio but with subfolders is treated as an
+  /// author/series grouping and descended into, up to [maxScanDepth] levels
+  /// below the root (matching ScannerService.maxScanDepth semantics).
+  ///
+  /// NOTE (architect risk flag): this walks the Drive tree sequentially with
+  /// one list call per folder — fine for personal libraries, but very deep
+  /// wide trees cost N+1 API round-trips. Depth cap bounds the worst case.
   Future<List<DriveFolderScan>> scanRootFolder(String rootFolderId, bool isShared) async {
-    final subfolders = await listSubfolders(rootFolderId, isShared: isShared);
+    return _scanFolderLevel(rootFolderId, isShared, maxScanDepth);
+  }
+
+  /// Maximum folder depth below the Drive root that scanning descends into.
+  /// Mirrors [ScannerService.maxScanDepth] so local and Drive libraries
+  /// support the same layouts: flat / author/book / author/series/book.
+  static const int maxScanDepth = 3;
+
+  Future<List<DriveFolderScan>> _scanFolderLevel(
+      String parentId, bool parentIsShared, int remainingDepth) async {
+    final subfolders = await listSubfolders(parentId, isShared: parentIsShared);
     final scans = <DriveFolderScan>[];
 
     for (final folder in subfolders) {
       final contents = await listFolderContents(folder.id);
       final audio = contents.where((f) => f.isAudio).toList();
-      if (audio.isEmpty) continue; // skip folders without audio
 
-      final images = contents.where((f) => f.isImage).toList();
-      final cover = _pickCover(images);
+      if (audio.isNotEmpty) {
+        final images = contents.where((f) => f.isImage).toList();
+        final cover = _pickCover(images);
+        scans.add(DriveFolderScan(
+            folder: folder, audioFiles: audio, coverFile: cover));
+        continue;
+      }
 
-      scans.add(DriveFolderScan(folder: folder, audioFiles: audio, coverFile: cover));
+      // No audio here — treat as grouping folder and descend.
+      if (remainingDepth > 0) {
+        scans.addAll(await _scanFolderLevel(
+            folder.id, folder.isShared, remainingDepth - 1));
+      }
     }
 
     return scans;

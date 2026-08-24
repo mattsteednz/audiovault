@@ -826,34 +826,31 @@ Future<void> _refreshDriveBook(String folderId) async {
       };
 
   Widget _grid(List<Audiobook> books) {
-    const crossAxisCount = 2;
+    // Responsive columns via MaxCrossAxisExtent: phones get ~2 columns,
+    // tablets/foldables/landscape scale up without breakpoint tables
+    // (architect-recommended for R17).
     const spacing = 12.0;
     const padding = 12.0;
 
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        final cardWidth = (constraints.maxWidth - padding * 2 - spacing * (crossAxisCount - 1)) / crossAxisCount;
-        return RefreshIndicator(
-          onRefresh: _scan,
-          child: GridView.builder(
-            padding: const EdgeInsets.all(padding),
-            gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-              crossAxisCount: crossAxisCount,
-              crossAxisSpacing: spacing,
-              mainAxisSpacing: spacing,
-              mainAxisExtent: cardWidth, // pure square — no text block
-            ),
-            itemCount: books.length,
-            itemBuilder: (context, i) => AudiobookCard(
-              book: books[i],
-              isActive: books[i].path == _activePath && _isPlaying,
-              status: _statuses[books[i].path] ?? BookStatus.notStarted,
-              onTap: () => _openPlayer(context, books[i]),
-              onLongPress: () => _openDetails(context, books[i]),
-            ),
-          ),
-        );
-      },
+    return RefreshIndicator(
+      onRefresh: _scan,
+      child: GridView.builder(
+        padding: const EdgeInsets.all(padding),
+        gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
+          maxCrossAxisExtent: 220,
+          mainAxisSpacing: spacing,
+          crossAxisSpacing: spacing,
+          childAspectRatio: 1, // pure square — no text block
+        ),
+        itemCount: books.length,
+        itemBuilder: (context, i) => AudiobookCard(
+          book: books[i],
+          isActive: books[i].path == _activePath && _isPlaying,
+          status: _statuses[books[i].path] ?? BookStatus.notStarted,
+          onTap: () => _openPlayer(context, books[i]),
+          onLongPress: () => _openDetails(context, books[i]),
+        ),
+      ),
     );
   }
 

@@ -6,26 +6,36 @@ import 'package:http/http.dart' as http;
 import 'package:path_provider/path_provider.dart';
 import 'package:sqflite/sqflite.dart';
 import '../models/audiobook.dart';
+import 'telemetry_service.dart';
 
 const _openLibrarySearchUrl = 'https://openlibrary.org/search.json';
 const _openLibraryCoverUrl = 'https://covers.openlibrary.org/b/id';
 
 class EnrichmentService {
-  EnrichmentService({http.Client? client}) : _client = client ?? http.Client();
+  EnrichmentService({http.Client? client})
+      : _client = client ?? http.Client(),
+        _usingInjectedClient = client != null;
 
   /// Injects an already-opened [Database] and optional [http.Client] — for use in tests only.
   @visibleForTesting
   EnrichmentService.withDatabase(Database db, {http.Client? client})
       : _client = client ?? http.Client(),
-        _db = db;
+        _db = db,
+        _usingInjectedClient = client != null;
 
   static void _log(String msg) => debugPrint('[Kowhai:Enrichment] $msg');
 
   http.Client _client;
+
+  /// True when the client came from DI (tests). An injected client closed by
+  /// [cancel] is NOT replaced — tests observe the close; production always
+  /// owns its client, which is recreated after a cancel on the next run.
+  final bool _usingInjectedClient;
   Database? _db;
   bool _processing = false;
   bool _cancelled = false;
   final _pendingBooks = <Audiobook>[];
+  bool _closedOwnedClient = false;
 
   final _controller =
       StreamController<({String bookPath, String coverPath})>.broadcast();
@@ -130,7 +140,10 @@ class EnrichmentService {
     }
     _processing = true;
     _cancelled = false;
-    _client = http.Client(); // fresh client for each queue run
+    if (!_usingInjectedClient && _closedOwnedClient) {
+      _client = http.Client();
+      _closedOwnedClient = false;
+    }
     try {
       var toProcess = List<Audiobook>.of(books);
       while (toProcess.isNotEmpty && !_cancelled) {
@@ -167,6 +180,9 @@ class EnrichmentService {
     _cancelled = true;
     _pendingBooks.clear();
     _client.close();
+    if (!_usingInjectedClient) {
+      _closedOwnedClient = true;
+    }
   }
 
   /// Release resources. Only needed if the singleton is torn down (e.g. tests).
@@ -183,7 +199,8 @@ class EnrichmentService {
     _log('Fetching cover for "${book.title}"');
 
     try {
-      final coverPath = await _fetchCoverForTitle(book.title);
+      final coverPath =
+          await _fetchCoverForTitle(book.title, author: book.author);
       if (coverPath != null) {
         await _recordSuccess(book.path, coverPath);
         _clearFailed(book.path);
@@ -203,11 +220,26 @@ class EnrichmentService {
     }
   }
 
-  Future<String?> _fetchCoverForTitle(String title) async {
+  Future<String?> _fetchCoverForTitle(String title, {String? author}) async {
+    // Prefer an author-constrained query (better precision); fall back to
+    // title-only when the author is unknown or the combined query misses.
+    if (author != null && author.isNotEmpty) {
+      final hit = await _searchOpenLibrary(title, author);
+      if (hit != null) return hit;
+      TelemetryService.logEvent('enrich_author_fallback',
+          parameters: {'title': title});
+    }
+    return _searchOpenLibrary(title, null);
+  }
+
+  Future<String?> _searchOpenLibrary(String title, String? author) async {
     final encodedTitle = Uri.encodeComponent(title);
+    final authorParam = (author == null || author.isEmpty)
+        ? ''
+        : '&author=${Uri.encodeComponent(author)}';
     final searchResp = await _client
         .get(Uri.parse(
-            '$_openLibrarySearchUrl?title=$encodedTitle&limit=1'))
+            '$_openLibrarySearchUrl?title=$encodedTitle$authorParam&limit=1'))
         .timeout(const Duration(seconds: 10));
 
     if (searchResp.statusCode != 200) return null;
