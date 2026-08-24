@@ -1,7 +1,7 @@
 name: kowhai
 description: Kōwhai Audiobook Player.
 publish_to: 'none'
-version: 2.1.0+0
+version: 3.0.0+0
 
 environment:
   sdk: '>=3.0.0 <4.0.0'
@@ -26,7 +26,7 @@ dependencies:
   get_it: ^9.2.1
   package_info_plus: ^8.0.0
   url_launcher: ^6.3.0
-  google_sign_in: ^6.2.1
+  google_sign_in: ^7.2.0
   googleapis: ^13.2.0
   google_api_availability: ^5.0.1
   connectivity_plus: ^6.0.0
