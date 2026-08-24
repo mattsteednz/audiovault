@@ -15,8 +15,6 @@ import '../services/position_service.dart';
 import '../services/preferences_service.dart';
 import '../services/scanner_service.dart';
 import '../widgets/audio_handler_scope.dart';
-import '../widgets/audiobook_card.dart';
-import '../widgets/audiobook_list_tile.dart';
 import '../widgets/library_overflow_menu.dart';
 import '../widgets/mini_player.dart';
 import '../widgets/sleep_timer_indicator.dart';
@@ -27,6 +25,7 @@ import 'settings_screen.dart';
 import '../locator.dart';
 import '../services/download_progress_tracker.dart';
 import '../utils/library_queries.dart';
+import 'library/book_views.dart';
 import 'library/drive_scan_overlay.dart';
 import 'library/drive_download_sheet.dart';
 import 'library/library_view_bar.dart';
@@ -53,7 +52,7 @@ class _LibraryScreenState extends State<LibraryScreen> {
   Map<String, BookStatus> _statuses = {};
   String? _error;
   bool _syncing = false;
-  String _scanStatus = 'Scanning your library…';
+  String _scanStatus = 'Scanning your libraryâ€¦';
   bool _hasLocalFolder = false;
   bool _hasDriveConfigured = false;
   Set<String> _syncFoundPaths = {};
@@ -63,7 +62,7 @@ class _LibraryScreenState extends State<LibraryScreen> {
   bool _isSearching = false;
 String _searchQuery = '';
 final TextEditingController _searchController = TextEditingController();
-// Debounces keystrokes so the full filter pipeline runs at most ~7×/s
+// Debounces keystrokes so the full filter pipeline runs at most ~7Ã—/s
 // instead of on every character. Clear actions flush immediately.
 Timer? _searchDebounce;
 
@@ -151,13 +150,13 @@ Timer? _searchDebounce;
   }
 
   List<Audiobook> get _displayedBooks {
-    // Pipeline: availability → search → status
+    // Pipeline: availability â†’ search â†’ status
     final availFiltered = applyAvailabilityFilter(_books ?? [], _availabilityFilter);
     final searchFiltered = filterBooks(availFiltered, _searchQuery);
     return applyStatusFilter(searchFiltered, _statuses, _statusFilter);
   }
 
-  // ── Scan + sort ─────────────────────────────────────────────────────────────
+  // â”€â”€ Scan + sort â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
   /// Toggles grid/list and persists the choice across launches.
   Future<void> _toggleViewMode() async {
@@ -179,7 +178,7 @@ Timer? _searchDebounce;
     if (mounted) {
       setState(() {
         _sortOrder = LibrarySortOrder.fromName(sortName);
-        // Reset to `all` if Drive is not connected — the filter is meaningless
+        // Reset to `all` if Drive is not connected â€” the filter is meaningless
         // without a Drive account and the section won't be shown in the UI.
         _availabilityFilter = driveConnected ? availFilter : AvailabilityFilterState.all;
         _statusFilter = statusFilter;
@@ -188,7 +187,7 @@ Timer? _searchDebounce;
     }
     final shouldScan = widget.initialSyncDrive || await prefs.getRefreshOnStartup();
     // Always load previously discovered books so the library isn't empty on
-    // launch. When refresh-on-startup is off, skip the Drive network sync —
+    // launch. When refresh-on-startup is off, skip the Drive network sync â€”
     // cached Drive books still load from the DB.
     _scan(syncWithDrive: shouldScan);
   }
@@ -201,13 +200,13 @@ Timer? _searchDebounce;
     _rawBooks ??= [];
     final idx = _rawBooks!.indexWhere((b) => b.path == book.path);
     if (idx == -1) {
-      // New book — optimistic append to both lists (sort applied at end).
+      // New book â€” optimistic append to both lists (sort applied at end).
       setState(() {
         _rawBooks = [..._rawBooks!, book];
         _books = [...(_books ?? []), book];
       });
     } else {
-      // Existing book — refresh metadata in place without reordering.
+      // Existing book â€” refresh metadata in place without reordering.
       setState(() {
         _rawBooks = List.from(_rawBooks!)..[idx] = book;
       });
@@ -218,7 +217,7 @@ Timer? _searchDebounce;
     _syncFoundPaths = {};
     setState(() {
       _syncing = true;
-      _scanStatus = 'Scanning your library…';
+      _scanStatus = 'Scanning your libraryâ€¦';
       _error = null;
       // Intentionally NOT clearing _rawBooks or _books so existing
       // books remain visible while the resync runs in the background.
@@ -226,9 +225,9 @@ Timer? _searchDebounce;
     try {
       final path = await locator<PreferencesService>().getLibraryPath();
 
-      // No local folder — the wait is entirely on Drive, so say so.
+      // No local folder â€” the wait is entirely on Drive, so say so.
       if (path == null && mounted) {
-        setState(() => _scanStatus = 'Checking Google Drive…');
+        setState(() => _scanStatus = 'Checking Google Driveâ€¦');
       }
 
       // Exclude Drive-managed dirs from local scan to avoid double-counting
@@ -276,7 +275,7 @@ Timer? _searchDebounce;
       final enrichEnabled = await locator<PreferencesService>().getMetadataEnrichment();
 
       if (mounted && enrichEnabled) {
-        setState(() => _scanStatus = 'Loading covers…');
+        setState(() => _scanStatus = 'Loading coversâ€¦');
       }
 
       // Apply cached enriched covers only when enrichment is enabled.
@@ -408,7 +407,7 @@ Future<void> _refreshDriveBook(String folderId) async {
     }
     // _applySort() rebuilds _books from _rawBooks + _driveBooks and calls
     // setState, which causes _displayedBooks to recompute via
-    // applyAvailabilityFilter → filterBooks → applyStatusFilter.
+    // applyAvailabilityFilter â†’ filterBooks â†’ applyStatusFilter.
     // This means a newly-downloaded Drive book automatically disappears from
     // the `driveOnly` view and appears in the `availableOffline` view without
     // any manual rescan (Requirements 2.6, 2.7).
@@ -424,7 +423,7 @@ Future<void> _refreshDriveBook(String folderId) async {
           title: const Text('DRM-Protected File'),
           content: const Text(
             'This audiobook is in Audible\'s AAX/AA format and is protected '
-            'by DRM (Digital Rights Management). Kōwhai cannot play '
+            'by DRM (Digital Rights Management). KÅwhai cannot play '
             'DRM-protected files.\n\n'
             'To listen, use the Audible app, or convert the file to a '
             'DRM-free format using a tool that supports your local laws.',
@@ -490,7 +489,7 @@ Future<void> _refreshDriveBook(String folderId) async {
       if (result == true) {
         _scan();
       } else if (result is String) {
-        // Drive book was undownloaded — result is the folderId.
+        // Drive book was undownloaded â€” result is the folderId.
         _refreshDriveBook(result);
       } else {
         _applySort();
@@ -498,7 +497,7 @@ Future<void> _refreshDriveBook(String folderId) async {
     });
   }
 
-  // ── Build ────────────────────────────────────────────────────────────────────
+  // â”€â”€ Build â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
   @override
   Widget build(BuildContext context) {
@@ -583,7 +582,7 @@ Future<void> _refreshDriveBook(String folderId) async {
                   });
                 },
                 decoration: InputDecoration(
-                  hintText: 'Search by title or author…',
+                  hintText: 'Search by title or authorâ€¦',
                   prefixIcon: const Icon(Icons.search_rounded),
                   suffixIcon: _searchQuery.isNotEmpty
                       ? IconButton(
@@ -714,7 +713,13 @@ Future<void> _refreshDriveBook(String folderId) async {
         _viewBar(books.length),
         Expanded(
           child: books.isEmpty
-              ? _noMatchesView()
+              ? LibraryNoMatchesView(
+                  searchQuery: _searchQuery,
+                  statusFilter: _statusFilter,
+                  availabilityFilter: _availabilityFilter,
+                  statusLabel: _statusFilterLabel,
+                  onClearFilters: _clearSearchAndFilters,
+                )
               : _viewMode == _ViewMode.grid
                   ? _grid(books)
                   : _list(books),
@@ -723,7 +728,7 @@ Future<void> _refreshDriveBook(String folderId) async {
     );
   }
 
-  // ── View bar (pinned, below search) ─────────────────────────────────────────
+  // â”€â”€ View bar (pinned, below search) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
   Widget _viewBar(int count) {
     return LibraryViewBar(
@@ -761,41 +766,6 @@ Future<void> _refreshDriveBook(String folderId) async {
     );
   }
 
-  Widget _noMatchesView() {
-    final hasSearch = _searchQuery.isNotEmpty;
-    final hasStatus = _statusFilter != null;
-    final hasAvailability = _availabilityFilter != AvailabilityFilterState.all;
-    final hasAnyFilter = hasStatus || hasAvailability;
-
-    final message = noMatchesMessage(
-        searchQuery: _searchQuery,
-        statusFilter: _statusFilter,
-        availabilityFilter: _availabilityFilter,
-        statusLabel: _statusFilterLabel);
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.all(32),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const Icon(Icons.search_off_rounded,
-                size: 64, color: Colors.grey),
-            const SizedBox(height: 16),
-            Text(message, textAlign: TextAlign.center),
-            if (hasSearch || hasAnyFilter) ...[
-              const SizedBox(height: 20),
-              TextButton.icon(
-                icon: const Icon(Icons.filter_alt_off_rounded),
-                label: const Text('Clear filters'),
-                onPressed: _clearSearchAndFilters,
-              ),
-            ],
-          ],
-        ),
-      ),
-    );
-  }
-
   void _openCurrentBookPlayer() {
     final ah = AudioHandlerScope.of(context).audioHandler;
     final book = ah.currentBook;
@@ -826,31 +796,14 @@ Future<void> _refreshDriveBook(String folderId) async {
       };
 
   Widget _grid(List<Audiobook> books) {
-    // Responsive columns via MaxCrossAxisExtent: phones get ~2 columns,
-    // tablets/foldables/landscape scale up without breakpoint tables
-    // (architect-recommended for R17).
-    const spacing = 12.0;
-    const padding = 12.0;
-
-    return RefreshIndicator(
+    return buildLibraryGrid(
+      books: books,
+      activePath: _activePath,
+      isPlaying: _isPlaying,
+      statuses: _statuses,
+      onOpenPlayer: (b) => _openPlayer(context, b),
+      onOpenDetails: (b) => _openDetails(context, b),
       onRefresh: _scan,
-      child: GridView.builder(
-        padding: const EdgeInsets.all(padding),
-        gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
-          maxCrossAxisExtent: 220,
-          mainAxisSpacing: spacing,
-          crossAxisSpacing: spacing,
-          childAspectRatio: 1, // pure square — no text block
-        ),
-        itemCount: books.length,
-        itemBuilder: (context, i) => AudiobookCard(
-          book: books[i],
-          isActive: books[i].path == _activePath && _isPlaying,
-          status: _statuses[books[i].path] ?? BookStatus.notStarted,
-          onTap: () => _openPlayer(context, books[i]),
-          onLongPress: () => _openDetails(context, books[i]),
-        ),
-      ),
     );
   }
 
@@ -874,42 +827,26 @@ Future<void> _refreshDriveBook(String folderId) async {
   }
 
   Widget _list(List<Audiobook> books) {
-    return RefreshIndicator(
+    return buildLibraryList(
+      books: books,
+      activePath: _activePath,
+      isPlaying: _isPlaying,
+      statuses: _statuses,
+      downloadingFolderIds: _tracker.downloadingFolders.value,
+      downloadSizeLabels: _downloadSizeLabels,
+      onOpenPlayer: (b) => _openPlayer(context, b),
+      onOpenDetails: (b) => _openDetails(context, b),
+      onDownloadPressed: (b) => showDriveDownloadSheet(context, b),
+      onCancelDownloadPressed: (b) async {
+        final folderId = b.driveMetadata?.folderId;
+        if (folderId == null) return;
+        final cancelled =
+            await showDriveDownloadProgressSheet(context, b);
+        if (cancelled == true) {
+          await _refreshDriveBook(folderId);
+        }
+      },
       onRefresh: _scan,
-      child: ListView.separated(
-        padding: const EdgeInsets.symmetric(vertical: 8),
-        itemCount: books.length,
-        separatorBuilder: (_, __) => const Divider(height: 1, indent: 88),
-        itemBuilder: (context, i) {
-          final book = books[i];
-          final folderId = book.driveMetadata?.folderId;
-          final downloading = folderId != null &&
-              _tracker.downloadingFolders.value.contains(folderId);
-          return AudiobookListTile(
-            book: book,
-            isActive: book.path == _activePath && _isPlaying,
-            status: _statuses[book.path] ?? BookStatus.notStarted,
-            onTap: () => _openPlayer(context, book),
-            onDetailsPressed: () => _openDetails(context, book),
-            isDownloading: downloading,
-            downloadSizeLabel: downloading
-                ? null
-                : _downloadSizeLabels[book.path],
-            onDownloadPressed: !downloading && _downloadSizeLabels[book.path] != null
-                ? () => showDriveDownloadSheet(context, book)
-                : null,
-            onCancelDownloadPressed: downloading
-                ? () async {
-                    final cancelled =
-                        await showDriveDownloadProgressSheet(context, book);
-                    if (cancelled == true) {
-                      _refreshDriveBook(folderId);
-                    }
-                  }
-                : null,
-          );
-        },
-      ),
     );
   }
 }
